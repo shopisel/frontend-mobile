@@ -110,7 +110,6 @@ const styles = StyleSheet.create({
   image: { width: "100%", height: "100%" },
   imageOverlay: {
     ...StyleSheet.absoluteFillObject,
-    background: "transparent",
     backgroundColor: "rgba(255,255,255,0.05)",
   },
   skipBtn: {

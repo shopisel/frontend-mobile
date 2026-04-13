@@ -227,7 +227,7 @@ const styles = StyleSheet.create({
   productChip: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderRadius: Radii["2xl"], borderWidth: 2, borderColor: Colors.gray100, backgroundColor: Colors.surface, maxWidth: 160 },
   productChipActive: { borderColor: Colors.primary600, backgroundColor: Colors.primary50 },
   productChipText: { fontSize: 12, fontWeight: "600", color: Colors.gray500, flexShrink: 1 },
-  detailCard: { borderRadius: Radii["3xl"], padding: 20, background: "none", backgroundColor: Colors.primary600, shadowColor: Colors.primary600, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 8 },
+  detailCard: { borderRadius: Radii["3xl"], padding: 20, backgroundColor: Colors.primary600, shadowColor: Colors.primary600, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 8 },
   detailEmoji: { width: 56, height: 56, borderRadius: Radii.xl, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" },
   detailCategory: { fontSize: 12, color: "#C7D2FE" },
   detailName: { fontSize: 16, fontWeight: "700", color: "#fff" },

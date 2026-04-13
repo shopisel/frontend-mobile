@@ -5,14 +5,14 @@ import { Home, List, ScanLine, BarChart2, User } from "lucide-react-native";
 import { Colors } from "../../src/styles/colors";
 
 const tabs = [
-  { name: "home",   label: "Home",   icon: Home },
-  { name: "lists",  label: "Lists",  icon: List },
-  { name: "scan",   label: "Scan",   icon: ScanLine },
+  { name: "home", label: "Home", icon: Home },
+  { name: "lists", label: "Lists", icon: List },
+  { name: "scan", label: "Scan", icon: ScanLine },
   { name: "prices", label: "Prices", icon: BarChart2 },
-  { name: "profile",label: "Profile",icon: User },
+  { name: "profile", label: "Profile", icon: User },
 ] as const;
 
-function TabBar({ state, descriptors, navigation }: any) {
+function TabBar({ state, navigation }: any) {
   const insets = useSafeAreaInsets();
 
   return (
@@ -50,7 +50,7 @@ function TabBar({ state, descriptors, navigation }: any) {
               </>
             )}
             {isScan && (
-              <Text style={[styles.label, { color: isActive ? Colors.primary600 : Colors.gray400 }]}>
+              <Text style={[styles.label, { color: isActive ? Colors.primary600 : Colors.gray400 }]}> 
                 {tab.label}
               </Text>
             )}

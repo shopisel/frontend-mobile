@@ -1,6 +1,6 @@
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Alert, ActivityIndicator, Modal,
+  TextInput, ActivityIndicator,
 } from "react-native";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
@@ -10,8 +10,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLists, type ListResponse, type ListItemResponse, type ListItemRequest } from "../../api/useLists";
 import { useProducts, type Product } from "../../api/useProducts";
 import { useStores, type StoreResponse } from "../../api/useStores";
+import { AddProductModal, type AddListItemPayload } from "../modals/AddProductModal";
 import { Colors } from "../../styles/colors";
-import { Radii, Typography } from "../../styles/typography";
+import { Radii } from "../../styles/typography";
 
 interface EnrichedItem extends ListItemResponse {
   name: string;
@@ -29,122 +30,155 @@ export function ListsScreen({ onNavigate }: ListsScreenProps) {
   const { getProductsByIds } = useProducts();
   const { getStores } = useStores();
 
-  const [lists, setLists]           = useState<ListResponse[]>([]);
-  const [items, setItems]           = useState<EnrichedItem[]>([]);
-  const [view, setView]             = useState<"lists" | "items">("lists");
+  const [lists, setLists] = useState<ListResponse[]>([]);
+  const [items, setItems] = useState<EnrichedItem[]>([]);
+  const [view, setView] = useState<"lists" | "items">("lists");
   const [activeListId, setActiveListId] = useState<string | null>(null);
-  const [searchInput, setSearchInput]   = useState("");
-  const [isLoading, setIsLoading]       = useState(false);
+  const [searchInput, setSearchInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newListName, setNewListName] = useState("");
 
-  const activeList = useMemo(() => lists.find(l => l.id === activeListId) ?? null, [lists, activeListId]);
+  const activeList = useMemo(() => lists.find((list) => list.id === activeListId) ?? null, [lists, activeListId]);
 
   const loadLists = useCallback(async () => {
     setIsLoading(true);
     try {
       const data = await getLists();
       setLists(data ?? []);
-    } catch (e) { console.error(e); }
-    finally { setIsLoading(false); }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsLoading(false);
+    }
   }, [getLists]);
 
-  useEffect(() => { if (view === "lists") loadLists(); }, [loadLists, view]);
+  useEffect(() => {
+    if (view === "lists") void loadLists();
+  }, [loadLists, view]);
 
   const loadItems = useCallback(async (listId: string) => {
     setIsLoading(true);
     try {
       const listData = await getList(listId);
       const rawItems = listData.items ?? [];
-      const productIds = [...new Set(rawItems.map(i => i.productId))];
-      const storeIds   = [...new Set(rawItems.map(i => i.storeId))];
+      const productIds = [...new Set(rawItems.map((item) => item.productId))];
+      const storeIds = [...new Set(rawItems.map((item) => item.storeId))];
 
       const productsMap: Record<string, Product> = {};
-      const storesMap:   Record<string, StoreResponse> = {};
+      const storesMap: Record<string, StoreResponse> = {};
 
       if (productIds.length) {
-        const prods = await getProductsByIds(productIds).catch(() => []);
-        prods.forEach(p => { productsMap[p.id] = p; });
-      }
-      if (storeIds.length) {
-        const stores = await getStores({ ids: storeIds.join(",") }).catch(() => []);
-        stores.forEach(s => { storesMap[s.id] = s; });
+        const products = await getProductsByIds(productIds).catch(() => []);
+        products.forEach((product) => { productsMap[product.id] = product; });
       }
 
-      const enriched: EnrichedItem[] = rawItems.map(item => ({
+      if (storeIds.length) {
+        const stores = await getStores({ ids: storeIds.join(",") }).catch(() => []);
+        stores.forEach((store) => { storesMap[store.id] = store; });
+      }
+
+      const enriched: EnrichedItem[] = rawItems.map((item) => ({
         ...item,
-        name:      productsMap[item.productId]?.name ?? "Unknown Product",
-        emoji:     (productsMap[item.productId] as any)?.emoji ?? "📦",
+        name: productsMap[item.productId]?.name ?? "Unknown Product",
+        emoji: productsMap[item.productId]?.emoji ?? "??",
         storeName: storesMap[item.storeId]?.name ?? "Unknown Store",
       }));
 
-      setLists(prev => prev.map(l => l.id === listId ? { ...l, ...listData } : l));
+      setLists((current) => current.map((list) => (list.id === listId ? { ...list, ...listData } : list)));
       setItems(enriched);
-    } catch (e) { console.error(e); }
-    finally { setIsLoading(false); }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsLoading(false);
+    }
   }, [getList, getProductsByIds, getStores]);
 
-  useEffect(() => { if (activeListId && view === "items") loadItems(activeListId); }, [activeListId, view, loadItems]);
+  useEffect(() => {
+    if (activeListId && view === "items") void loadItems(activeListId);
+  }, [activeListId, view, loadItems]);
 
   const commitUpdates = async (listId: string, updated: EnrichedItem[]) => {
-    const req: ListItemRequest[] = updated.map(i => ({
-      productId: i.productId, storeId: i.storeId,
-      quantity: i.quantity, price: i.price, checked: i.checked,
+    const req: ListItemRequest[] = updated.map((item) => ({
+      productId: item.productId,
+      storeId: item.storeId,
+      quantity: item.quantity,
+      price: item.price,
+      checked: item.checked,
     }));
     await updateList(listId, undefined, req).catch(console.error);
   };
 
   const handleToggle = (id: number) => {
     if (!activeListId) return;
-    const updated = items.map(i => i.id === id ? { ...i, checked: !i.checked } : i);
+    const updated = items.map((item) => (item.id === id ? { ...item, checked: !item.checked } : item));
     setItems(updated);
     void commitUpdates(activeListId, updated);
   };
 
   const handleDelete = (id: number) => {
     if (!activeListId) return;
-    const updated = items.filter(i => i.id !== id);
+    const updated = items.filter((item) => item.id !== id);
     setItems(updated);
     void commitUpdates(activeListId, updated);
   };
 
-  const handleCreateList = () => {
-    Alert.prompt(
-      "Nova lista",
-      "Nome da nova lista:",
-      async (name) => {
-        if (!name?.trim()) return;
-        setIsLoading(true);
-        try {
-          const newList = await createList(name.trim());
-          setLists(prev => [newList, ...prev]);
-          setActiveListId(newList.id);
-          setView("items");
-        } catch (e) { console.error(e); }
-        finally { setIsLoading(false); }
-      }
-    );
+  const handleCreateList = async () => {
+    if (!newListName.trim()) return;
+    setIsLoading(true);
+    try {
+      const newList = await createList(newListName.trim());
+      setLists((current) => [newList, ...current]);
+      setActiveListId(newList.id);
+      setView("items");
+      setNewListName("");
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const filteredItems = useMemo(() =>
-    searchInput.trim()
-      ? items.filter(i => i.name.toLowerCase().includes(searchInput.toLowerCase()))
-      : items,
-    [items, searchInput]
-  );
+  const handleAddItem = async (item: AddListItemPayload) => {
+    if (!activeListId) return;
 
-  const total = items.filter(i => !i.checked).reduce((s, i) => s + i.price * i.quantity, 0);
-  const checkedCount = items.filter(i => i.checked).length;
+    const updated: EnrichedItem[] = [
+      ...items,
+      {
+        id: Date.now(),
+        productId: item.productId,
+        storeId: item.storeId,
+        quantity: item.quantity,
+        price: item.price,
+        checked: item.checked,
+        name: item.name,
+        emoji: item.emoji,
+        storeName: item.storeName,
+      },
+    ];
 
-  /* ── LISTS VIEW ── */
+    setItems(updated);
+    await commitUpdates(activeListId, updated);
+  };
+
+  const filteredItems = useMemo(() => {
+    return searchInput.trim()
+      ? items.filter((item) => item.name.toLowerCase().includes(searchInput.toLowerCase()))
+      : items;
+  }, [items, searchInput]);
+
+  const total = items.filter((item) => !item.checked).reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const checkedCount = items.filter((item) => item.checked).length;
+
   if (view === "lists") {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
-        {/* Header */}
         <View style={styles.header}>
           <View>
             <Text style={styles.headerTitle}>Minhas Listas</Text>
             <Text style={styles.headerSub}>Gere as tuas compras</Text>
           </View>
-          <TouchableOpacity style={styles.iconBtn} onPress={loadLists}>
+          <TouchableOpacity style={styles.iconBtn} onPress={() => void loadLists()}>
             <RefreshCw size={20} color={Colors.gray500} />
           </TouchableOpacity>
         </View>
@@ -154,7 +188,7 @@ export function ListsScreen({ onNavigate }: ListsScreenProps) {
             <View style={styles.card}><ActivityIndicator color={Colors.primary600} /></View>
           ) : (
             <>
-              {lists.map(list => (
+              {lists.map((list) => (
                 <TouchableOpacity
                   key={list.id}
                   style={styles.card}
@@ -176,14 +210,25 @@ export function ListsScreen({ onNavigate }: ListsScreenProps) {
 
               {!lists.length && !isLoading && (
                 <View style={styles.card}>
-                  <Text style={{ fontSize: 14, color: Colors.gray500 }}>Ainda não tens listas.</Text>
+                  <Text style={{ fontSize: 14, color: Colors.gray500 }}>Ainda n�o tens listas.</Text>
                 </View>
               )}
 
-              <TouchableOpacity style={styles.newListBtn} onPress={handleCreateList} activeOpacity={0.8}>
-                <Plus size={20} color={Colors.gray400} />
-                <Text style={styles.newListText}>Create New List</Text>
-              </TouchableOpacity>
+              <View style={styles.createListCard}>
+                <View style={styles.createListInput}>
+                  <TextInput
+                    value={newListName}
+                    onChangeText={setNewListName}
+                    placeholder="Nome da nova lista"
+                    placeholderTextColor={Colors.gray400}
+                    style={styles.searchInput}
+                  />
+                </View>
+                <TouchableOpacity style={styles.newListBtn} onPress={() => void handleCreateList()} activeOpacity={0.8}>
+                  <Plus size={20} color={Colors.gray400} />
+                  <Text style={styles.newListText}>Create New List</Text>
+                </TouchableOpacity>
+              </View>
             </>
           )}
         </ScrollView>
@@ -191,21 +236,18 @@ export function ListsScreen({ onNavigate }: ListsScreenProps) {
     );
   }
 
-  /* ── ITEMS VIEW ── */
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => setView("lists")}>
           <ChevronLeft size={18} color={Colors.gray500} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { flex: 1 }]} numberOfLines={1}>{activeList?.name ?? "Lista"}</Text>
-        <TouchableOpacity style={styles.iconBtnSm} onPress={() => activeListId && loadItems(activeListId)}>
+        <TouchableOpacity style={styles.iconBtnSm} onPress={() => activeListId && void loadItems(activeListId)}>
           <RefreshCw size={16} color={Colors.primary600} />
         </TouchableOpacity>
       </View>
 
-      {/* Progress */}
       <View style={styles.progressWrap}>
         <View style={styles.progressTrack}>
           <View style={[styles.progressFill, { width: items.length ? `${(checkedCount / items.length) * 100}%` : "0%" }]} />
@@ -213,7 +255,6 @@ export function ListsScreen({ onNavigate }: ListsScreenProps) {
         <Text style={styles.progressText}>{checkedCount}/{items.length}</Text>
       </View>
 
-      {/* Search + total */}
       <View style={styles.searchRow}>
         <View style={styles.searchBox}>
           <Search size={16} color={Colors.gray400} />
@@ -226,26 +267,25 @@ export function ListsScreen({ onNavigate }: ListsScreenProps) {
           />
         </View>
         <View style={styles.totalBadge}>
-          <Text style={styles.totalText}>€{total.toFixed(2)}</Text>
+          <Text style={styles.totalText}>�{total.toFixed(2)}</Text>
         </View>
       </View>
 
-      {/* Items */}
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, gap: 10 }}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, gap: 10, paddingBottom: 96 }}>
         {isLoading && filteredItems.length === 0 ? (
           <ActivityIndicator color={Colors.primary600} />
         ) : !filteredItems.length ? (
           <View style={styles.card}><Text style={{ fontSize: 13, color: Colors.gray500, textAlign: "center" }}>Nenhum item adicionado.</Text></View>
         ) : (
-          filteredItems.map(item => (
+          filteredItems.map((item) => (
             <View key={item.id} style={styles.itemCard}>
-              <View style={styles.itemEmoji}><Text style={{ fontSize: 20 }}>{item.emoji ?? "📦"}</Text></View>
+              <View style={styles.itemEmoji}><Text style={{ fontSize: 20 }}>{item.emoji ?? "??"}</Text></View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.itemName, item.checked && styles.itemNameChecked]} numberOfLines={1}>{item.name}</Text>
-                <Text style={styles.itemSub}>{item.quantity} un · {item.storeName}</Text>
+                <Text style={styles.itemSub}>{item.quantity} un � {item.storeName}</Text>
               </View>
               <Text style={[styles.itemPrice, item.checked && { color: Colors.gray400 }]}>
-                €{(item.price * item.quantity).toFixed(2)}
+                �{(item.price * item.quantity).toFixed(2)}
               </Text>
               <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDelete(item.id)}>
                 <Trash2 size={14} color="#F87171" />
@@ -261,10 +301,18 @@ export function ListsScreen({ onNavigate }: ListsScreenProps) {
         )}
       </ScrollView>
 
-      {/* FAB */}
-      <TouchableOpacity style={styles.fab} activeOpacity={0.85}>
+      <TouchableOpacity style={styles.fab} activeOpacity={0.85} onPress={() => setShowAddModal(true)}>
         <Plus size={24} color="#fff" />
       </TouchableOpacity>
+
+      <AddProductModal
+        visible={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onAddItem={(item) => {
+          void handleAddItem(item);
+          setShowAddModal(false);
+        }}
+      />
     </View>
   );
 }
@@ -282,6 +330,8 @@ const styles = StyleSheet.create({
   listCardIcon: { width: 40, height: 40, borderRadius: Radii.lg, backgroundColor: Colors.primary50, alignItems: "center", justifyContent: "center" },
   listCardName: { fontSize: 15, fontWeight: "700", color: Colors.gray900 },
   listCardCount: { fontSize: 12, color: Colors.gray400 },
+  createListCard: { gap: 10 },
+  createListInput: { backgroundColor: Colors.gray50, borderRadius: Radii["2xl"], paddingHorizontal: 16, height: 48, justifyContent: "center" },
   newListBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 16, borderRadius: Radii["3xl"], borderWidth: 2, borderStyle: "dashed", borderColor: Colors.gray200 },
   newListText: { fontSize: 14, fontWeight: "600", color: Colors.gray400 },
   progressWrap: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 20, paddingVertical: 10, backgroundColor: Colors.surface },

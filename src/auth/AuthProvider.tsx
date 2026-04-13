@@ -138,7 +138,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [promptAsync]);
 
   const register = useCallback(async () => {
-    await promptAsync({ extraParams: { kc_action: "REGISTER" } });
+    await promptAsync();
   }, [promptAsync]);
 
   const logout = useCallback(async () => {
