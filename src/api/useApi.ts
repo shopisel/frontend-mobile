@@ -1,12 +1,20 @@
 import { useAuth } from "../auth/AuthProvider";
 import { useCallback } from "react";
+import Constants from "expo-constants";
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? "/api";
+const extra = (Constants.expoConfig?.extra ?? {}) as Record<string, string | undefined>;
+const API_BASE_URL = extra.API_BASE_URL ?? process.env.EXPO_PUBLIC_API_BASE_URL ?? "";
 
 export function useApi() {
   const { getAccessToken } = useAuth();
 
   const fetchWithAuth = useCallback(async (endpoint: string, options: RequestInit = {}) => {
+    if (!API_BASE_URL) {
+      throw new Error(
+        "API nao configurada. Define EXPO_PUBLIC_API_BASE_URL no frontend-mobile/.env com a URL da gateway ou da API."
+      );
+    }
+
     const token = await getAccessToken();
 
     const headers = new Headers(options.headers);
@@ -18,23 +26,39 @@ export function useApi() {
       headers.set("Content-Type", "application/json");
     }
 
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    const url = `${API_BASE_URL}${endpoint}`;
+    const response = await fetch(url, {
       ...options,
       headers,
     });
 
     if (!response.ok) {
-      let errorData;
+      const responseText = await response.text();
+      let parsedError: unknown = null;
+
       try {
-        errorData = await response.json();
+        parsedError = responseText ? JSON.parse(responseText) : null;
       } catch {
-        errorData = response.statusText;
+        parsedError = responseText;
       }
-      throw new Error(
-        typeof errorData === "string"
-          ? errorData
-          : (errorData as { message?: string })?.message ?? response.statusText
-      );
+
+      const errorMessage =
+        typeof parsedError === "string" && parsedError.trim()
+          ? parsedError.trim()
+          : (parsedError as { message?: string; error?: string } | null)?.message
+            ?? (parsedError as { message?: string; error?: string } | null)?.error
+            ?? response.statusText
+            ?? "Request failed";
+
+      console.error("[useApi] Request failed", {
+        url,
+        method: options.method ?? "GET",
+        status: response.status,
+        statusText: response.statusText,
+        body: responseText,
+      });
+
+      throw new Error(`HTTP ${response.status}: ${errorMessage}`);
     }
 
     if (response.status === 204) return null;

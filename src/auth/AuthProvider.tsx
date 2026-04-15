@@ -46,6 +46,17 @@ function parseJwt(token: string): Record<string, unknown> {
   }
 }
 
+function isTokenExpiringSoon(token: string | null, bufferSeconds = 30): boolean {
+  if (!token) return true;
+
+  const parsed = parseJwt(token);
+  const exp = typeof parsed.exp === "number" ? parsed.exp : Number(parsed.exp);
+  if (!exp || Number.isNaN(exp)) return true;
+
+  const nowInSeconds = Math.floor(Date.now() / 1000);
+  return exp <= nowInSeconds + bufferSeconds;
+}
+
 function userFromToken(token: string | null): AuthUser | null {
   if (!token) return null;
   const parsed = parseJwt(token);
@@ -152,7 +163,47 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, []);
 
   const getAccessToken = useCallback(async (): Promise<string | null> => {
-    return token;
+    if (!token) return null;
+
+    if (!isTokenExpiringSoon(token)) {
+      return token;
+    }
+
+    const storedRefreshToken = await SecureStore.getItemAsync(REFRESH_KEY);
+    if (!storedRefreshToken || !keycloakDiscovery) {
+      return token;
+    }
+
+    try {
+      const refreshed = await AuthSession.refreshAsync(
+        {
+          clientId: KEYCLOAK_CLIENT,
+          refreshToken: storedRefreshToken,
+        },
+        keycloakDiscovery
+      );
+
+      const nextAccessToken = refreshed.accessToken ?? token;
+      await SecureStore.setItemAsync(TOKEN_KEY, nextAccessToken);
+
+      if (refreshed.refreshToken) {
+        await SecureStore.setItemAsync(REFRESH_KEY, refreshed.refreshToken);
+      }
+
+      setToken(nextAccessToken);
+      setUser(userFromToken(nextAccessToken));
+      setIsAuthenticated(true);
+
+      return nextAccessToken;
+    } catch (error) {
+      console.error("Token refresh failed", error);
+      await SecureStore.deleteItemAsync(TOKEN_KEY);
+      await SecureStore.deleteItemAsync(REFRESH_KEY);
+      setToken(null);
+      setUser(null);
+      setIsAuthenticated(false);
+      return null;
+    }
   }, [token]);
 
   const value = useMemo<AuthContextValue>(

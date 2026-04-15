@@ -1,5 +1,5 @@
-import { ListsScreen } from "../../src/components/screens/ListsScreen";
+import { ListsOverviewScreen } from "../../src/components/screens/ListsOverviewScreen";
 
 export default function ListsTab() {
-  return <ListsScreen />;
+  return <ListsOverviewScreen />;
 }
