@@ -4,6 +4,7 @@ import { Search, Bell, Plus, ChevronRight, TrendingDown, MapPin, ShoppingBag, Za
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Colors } from "../../styles/colors";
 import { Radii, Typography } from "../../styles/typography";
+import { useAuth } from "../../auth/AuthProvider";
 
 const listItems = [
   { id: 1, name: "Organic Apples", qty: "1 kg",   price: "€2.49", store: "FreshMart",  checked: false, color: Colors.greenCard,  emoji: "🍎" },
@@ -26,8 +27,16 @@ interface HomeScreenProps {
 
 export function HomeScreen({ onNavigate }: HomeScreenProps) {
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
   const [quickAdd, setQuickAdd] = useState("");
   const [checkedItems, setCheckedItems] = useState<Set<number>>(new Set([2]));
+
+  const displayName = user?.name ?? user?.username ?? "Utilizador";
+  const initials = displayName
+    .split(" ")
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .join("");
 
   const toggleItem = (id: number) => {
     setCheckedItems(prev => {
@@ -43,7 +52,7 @@ export function HomeScreen({ onNavigate }: HomeScreenProps) {
       <View style={styles.header}>
         <View>
           <Text style={styles.greeting}>Good morning 👋</Text>
-          <Text style={styles.name}>Alex Johnson</Text>
+          <Text style={styles.name}>{displayName}</Text>
         </View>
         <View style={styles.headerRight}>
           <TouchableOpacity style={styles.bellBtn} onPress={() => onNavigate("alerts")}>
@@ -51,7 +60,7 @@ export function HomeScreen({ onNavigate }: HomeScreenProps) {
             <View style={styles.bellDot} />
           </TouchableOpacity>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>AJ</Text>
+            <Text style={styles.avatarText}>{initials}</Text>
           </View>
         </View>
       </View>

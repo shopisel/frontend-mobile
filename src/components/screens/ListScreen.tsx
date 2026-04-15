@@ -58,7 +58,7 @@ export function ListScreen() {
       const enriched: EnrichedItem[] = rawItems.map((item) => ({
         ...item,
         name: productsMap[item.productId]?.name ?? "Unknown Product",
-        emoji: productsMap[item.productId]?.emoji ?? "??",
+        emoji: productsMap[item.productId]?.emoji ?? "📦",
         storeName: storesMap[item.storeId]?.name ?? "Unknown Store",
       }));
 
@@ -177,7 +177,7 @@ export function ListScreen() {
           filteredItems.map((item) => (
             <View key={item.id} style={styles.itemCard}>
               <View style={styles.itemEmoji}>
-                <Text style={{ fontSize: 20 }}>{item.emoji ?? "??"}</Text>
+                <Text style={{ fontSize: 20 }}>{item.emoji || "📦"}</Text>
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.itemName, item.checked && styles.itemNameChecked]} numberOfLines={1}>{item.name}</Text>
