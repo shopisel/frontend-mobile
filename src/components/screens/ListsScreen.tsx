@@ -45,7 +45,7 @@ export function ListsScreen({ onNavigate }: ListsScreenProps) {
     setIsLoading(true);
     try {
       const data = await getLists();
-      setLists(data ?? []);
+      setLists(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error(error);
     } finally {

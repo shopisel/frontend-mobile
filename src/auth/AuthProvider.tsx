@@ -66,6 +66,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [configError, setConfigError]       = useState<string | null>(null);
 
   const redirectUri = AuthSession.makeRedirectUri({ scheme: "shopisel" });
+  console.log("[AuthProvider] redirectUri:", redirectUri);
+
 
   const [authRequest, authResponse, promptAsync] = AuthSession.useAuthRequest(
     isKeycloakConfigured && keycloakDiscovery

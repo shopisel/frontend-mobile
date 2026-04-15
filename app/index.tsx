@@ -9,6 +9,8 @@ export default function Index() {
   const { initialized, isAuthenticated } = useAuth();
 
   const handleSplashComplete = () => {
+    // Wait until auth state is known before redirecting
+    if (!initialized) return;
     if (isAuthenticated) {
       router.replace("/(tabs)/home");
     } else {
@@ -18,7 +20,7 @@ export default function Index() {
 
   return (
     <View style={styles.container}>
-      <SplashScreen onComplete={handleSplashComplete} />
+      <SplashScreen onComplete={handleSplashComplete} initialized={initialized} />
     </View>
   );
 }
