@@ -1,6 +1,6 @@
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, ActivityIndicator, Image,
+  TextInput, ActivityIndicator, Image, Modal,
 } from "react-native";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
@@ -33,7 +33,7 @@ export function ListsScreen({ onNavigate }: ListsScreenProps) {
   void onNavigate;
   const insets = useSafeAreaInsets();
   const { t, i18n } = useTranslation();
-  const { getLists, getList, createList, updateList } = useLists();
+  const { getLists, getList, createList, updateList, removeList } = useLists();
   const { getProductsByIds } = useProducts();
   const { getStores } = useStores();
 
@@ -45,6 +45,7 @@ export function ListsScreen({ onNavigate }: ListsScreenProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newListName, setNewListName] = useState("");
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   const activeList = useMemo(() => lists.find((list) => list.id === activeListId) ?? null, [lists, activeListId]);
 
@@ -145,6 +146,19 @@ export function ListsScreen({ onNavigate }: ListsScreenProps) {
       setActiveListId(newList.id);
       setView("items");
       setNewListName("");
+      setShowCreateModal(false);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteList = async (listId: string) => {
+    setIsLoading(true);
+    try {
+      await removeList(listId);
+      setLists((current) => current.filter((list) => list.id !== listId));
     } catch (error) {
       console.error(error);
     } finally {
@@ -209,23 +223,31 @@ export function ListsScreen({ onNavigate }: ListsScreenProps) {
           ) : (
             <>
               {lists.map((list) => (
-                <TouchableOpacity
-                  key={list.id}
-                  style={styles.card}
-                  onPress={() => { setActiveListId(list.id); setView("items"); }}
-                  activeOpacity={0.85}
-                >
+                <View key={list.id} style={styles.card}>
                   <View style={styles.listCardRow}>
-                    <View style={styles.listCardIcon}>
-                      <ShoppingCart size={20} color={Colors.primary600} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.listCardName}>{list.name}</Text>
-                      <Text style={styles.listCardCount}>{t("lists.itemCount", { count: list.items?.length ?? 0 })}</Text>
-                    </View>
-                    <ChevronRight size={20} color={Colors.gray300} />
+                    <TouchableOpacity
+                      style={styles.listCardMain}
+                      onPress={() => { setActiveListId(list.id); setView("items"); }}
+                      activeOpacity={0.85}
+                    >
+                      <View style={styles.listCardIcon}>
+                        <ShoppingCart size={20} color={Colors.primary600} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.listCardName}>{list.name}</Text>
+                        <Text style={styles.listCardCount}>{t("lists.itemCount", { count: list.items?.length ?? 0 })}</Text>
+                      </View>
+                      <ChevronRight size={20} color={Colors.gray300} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.deleteListButton}
+                      onPress={() => void handleDeleteList(list.id)}
+                      activeOpacity={0.85}
+                    >
+                      <Trash2 size={16} color="#DC2626" />
+                    </TouchableOpacity>
                   </View>
-                </TouchableOpacity>
+                </View>
               ))}
 
               {!lists.length && !isLoading && (
@@ -234,24 +256,47 @@ export function ListsScreen({ onNavigate }: ListsScreenProps) {
                 </View>
               )}
 
-              <View style={styles.createListCard}>
-                <View style={styles.createListInput}>
-                  <TextInput
-                    value={newListName}
-                    onChangeText={setNewListName}
-                    placeholder={t("lists.newListPlaceholder")}
-                    placeholderTextColor={Colors.gray400}
-                    style={styles.searchInput}
-                  />
-                </View>
-                <TouchableOpacity style={styles.newListBtn} onPress={() => void handleCreateList()} activeOpacity={0.8}>
-                  <Plus size={20} color={Colors.gray400} />
-                  <Text style={styles.newListText}>{t("lists.createNewList")}</Text>
-                </TouchableOpacity>
-              </View>
+              <TouchableOpacity style={styles.openCreateButton} onPress={() => setShowCreateModal(true)} activeOpacity={0.85}>
+                <Plus size={20} color={Colors.surface} />
+                <Text style={styles.openCreateButtonText}>{t("lists.openCreateForm")}</Text>
+              </TouchableOpacity>
             </>
           )}
         </ScrollView>
+
+        <Modal visible={showCreateModal} transparent animationType="fade" onRequestClose={() => setShowCreateModal(false)}>
+          <View style={styles.modalOverlay}>
+            <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setShowCreateModal(false)} />
+            <View style={styles.modalCard}>
+              <Text style={styles.modalTitle}>{t("lists.createFormTitle")}</Text>
+              <View style={styles.createListInput}>
+                <TextInput
+                  value={newListName}
+                  onChangeText={setNewListName}
+                  placeholder={t("lists.newListPlaceholder")}
+                  placeholderTextColor={Colors.gray400}
+                  style={styles.searchInput}
+                  autoFocus
+                />
+              </View>
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={styles.modalSecondaryButton}
+                  onPress={() => {
+                    setShowCreateModal(false);
+                    setNewListName("");
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.modalSecondaryButtonText}>{t("common.cancel")}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.modalPrimaryButton} onPress={() => void handleCreateList()} activeOpacity={0.85}>
+                  <Text style={styles.modalPrimaryButtonText}>{t("common.create")}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </View>
     );
   }
@@ -353,13 +398,14 @@ const styles = StyleSheet.create({
   backBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: Colors.gray100, alignItems: "center", justifyContent: "center" },
   card: { backgroundColor: Colors.surface, borderRadius: Radii["3xl"], padding: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 },
   listCardRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  listCardMain: { flex: 1, flexDirection: "row", alignItems: "center", gap: 12 },
   listCardIcon: { width: 40, height: 40, borderRadius: Radii.lg, backgroundColor: Colors.primary50, alignItems: "center", justifyContent: "center" },
   listCardName: { fontSize: 15, fontWeight: "700", color: Colors.gray900 },
   listCardCount: { fontSize: 12, color: Colors.gray400 },
-  createListCard: { gap: 10 },
+  deleteListButton: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#FEF2F2", alignItems: "center", justifyContent: "center" },
   createListInput: { backgroundColor: Colors.gray50, borderRadius: Radii["2xl"], paddingHorizontal: 16, height: 48, justifyContent: "center" },
-  newListBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 16, borderRadius: Radii["3xl"], borderWidth: 2, borderStyle: "dashed", borderColor: Colors.gray200 },
-  newListText: { fontSize: 14, fontWeight: "600", color: Colors.gray400 },
+  openCreateButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 16, borderRadius: Radii["3xl"], backgroundColor: Colors.primary600 },
+  openCreateButtonText: { fontSize: 14, fontWeight: "700", color: Colors.surface },
   progressWrap: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 20, paddingVertical: 10, backgroundColor: Colors.surface },
   progressTrack: { flex: 1, height: 8, backgroundColor: Colors.gray100, borderRadius: 99, overflow: "hidden" },
   progressFill: { height: "100%", backgroundColor: Colors.primary500, borderRadius: 99 },
@@ -381,4 +427,13 @@ const styles = StyleSheet.create({
   checkCircleChecked: { borderColor: Colors.success500, backgroundColor: Colors.success500 },
   fab: { position: "absolute", bottom: 24, right: 20, width: 56, height: 56, borderRadius: 28, backgroundColor: Colors.primary600, alignItems: "center", justifyContent: "center", shadowColor: Colors.primary600, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.4, shadowRadius: 10, elevation: 10 },
   emptyText: { fontSize: 13, color: Colors.gray500, textAlign: "center" },
+  modalOverlay: { flex: 1, justifyContent: "center", paddingHorizontal: 20, backgroundColor: "rgba(17,24,39,0.32)" },
+  modalBackdrop: { ...StyleSheet.absoluteFillObject },
+  modalCard: { backgroundColor: Colors.surface, borderRadius: Radii["3xl"], padding: 20, gap: 16 },
+  modalTitle: { fontSize: 18, fontWeight: "700", color: Colors.gray900 },
+  modalActions: { flexDirection: "row", gap: 10 },
+  modalSecondaryButton: { flex: 1, height: 48, borderRadius: Radii["2xl"], backgroundColor: Colors.gray100, alignItems: "center", justifyContent: "center" },
+  modalSecondaryButtonText: { fontSize: 14, fontWeight: "700", color: Colors.gray700 },
+  modalPrimaryButton: { flex: 1, height: 48, borderRadius: Radii["2xl"], backgroundColor: Colors.primary600, alignItems: "center", justifyContent: "center" },
+  modalPrimaryButtonText: { fontSize: 14, fontWeight: "700", color: Colors.surface },
 });
