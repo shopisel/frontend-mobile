@@ -2,8 +2,9 @@ import { Tabs } from "expo-router";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Home, List, ScanLine, BarChart2, User } from "lucide-react-native";
-import { Colors } from "../../src/styles/colors";
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import { useTheme } from "../../src/theme/ThemeProvider";
 
 const tabs = [
   { name: "home", labelKey: "tabs.home", icon: Home },
@@ -16,6 +17,8 @@ const tabs = [
 function TabBar({ state, navigation }: any) {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom || 8 }]}>
@@ -42,17 +45,17 @@ function TabBar({ state, navigation }: any) {
                 <View style={{ position: "relative" }}>
                   <Icon
                     size={24}
-                    color={isActive ? Colors.primary600 : Colors.gray400}
+                    color={isActive ? colors.primary600 : colors.gray400}
                     strokeWidth={isActive ? 2.2 : 1.8}
                   />
                 </View>
-                <Text style={[styles.label, { color: isActive ? Colors.primary600 : Colors.gray400, fontWeight: isActive ? "700" : "500" }]}>
+                <Text style={[styles.label, { color: isActive ? colors.primary600 : colors.gray400, fontWeight: isActive ? "700" : "500" }]}>
                   {t(tab.labelKey)}
                 </Text>
               </>
             )}
             {isScan && (
-              <Text style={[styles.label, { color: isActive ? Colors.primary600 : Colors.gray400 }]}> 
+              <Text style={[styles.label, { color: isActive ? colors.primary600 : colors.gray400 }]}> 
                 {t(tab.labelKey)}
               </Text>
             )}
@@ -75,12 +78,13 @@ export default function TabLayout() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors: ReturnType<typeof useTheme>["colors"]) {
+  return StyleSheet.create({
   container: {
     flexDirection: "row",
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderTopWidth: 1,
-    borderTopColor: Colors.gray100,
+    borderTopColor: colors.gray100,
     paddingTop: 8,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -4 },
@@ -102,17 +106,17 @@ const styles = StyleSheet.create({
     width: 32,
     height: 3,
     borderRadius: 99,
-    backgroundColor: Colors.primary600,
+    backgroundColor: colors.primary600,
   },
   scanButton: {
     width: 56,
     height: 56,
     borderRadius: 18,
-    backgroundColor: Colors.primary600,
+    backgroundColor: colors.primary600,
     alignItems: "center",
     justifyContent: "center",
     marginTop: -20,
-    shadowColor: Colors.primary600,
+    shadowColor: colors.primary600,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4,
     shadowRadius: 8,
@@ -121,4 +125,5 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 10,
   },
-});
+  });
+}

@@ -6,25 +6,38 @@ import Toast from "react-native-toast-message";
 import { AuthProvider } from "../src/auth/AuthProvider";
 import "../src/i18n";
 import { LanguageProvider } from "../src/i18n/LanguageProvider";
+import { ThemeProvider, useTheme } from "../src/theme/ThemeProvider";
 
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <LanguageProvider>
-          <AuthProvider>
-            <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="index" />
-              <Stack.Screen name="onboarding" />
-              <Stack.Screen name="auth" />
-              <Stack.Screen name="alerts" />
-              <Stack.Screen name="(tabs)" />
-            </Stack>
-            <StatusBar style="dark" />
-            <Toast />
-          </AuthProvider>
-        </LanguageProvider>
+        <ThemeProvider>
+          <LanguageProvider>
+            <AuthProvider>
+              <AppShell />
+            </AuthProvider>
+          </LanguageProvider>
+        </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
+  );
+}
+
+function AppShell() {
+  const { isDark } = useTheme();
+
+  return (
+    <>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="index" />
+        <Stack.Screen name="onboarding" />
+        <Stack.Screen name="auth" />
+        <Stack.Screen name="alerts" />
+        <Stack.Screen name="(tabs)" />
+      </Stack>
+      <StatusBar style={isDark ? "light" : "dark"} />
+      <Toast />
+    </>
   );
 }

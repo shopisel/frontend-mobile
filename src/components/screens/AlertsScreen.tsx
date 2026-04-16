@@ -1,14 +1,19 @@
-import { useMemo, useState } from "react";
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+ï»¿import { useCallback, useMemo, useState } from "react";
+import { useFocusEffect } from "expo-router";
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Bell, ChevronDown, Filter, TrendingDown, X } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
-import { Colors } from "../../styles/colors";
-import { Radii, Typography } from "../../styles/typography";
+import { useLists } from "../../api/useLists";
+import { usePrices } from "../../api/usePrices";
+import { useProducts, type Product } from "../../api/useProducts";
+import { useStores, type StoreResponse } from "../../api/useStores";
 import { formatCurrency } from "../../i18n/formatters";
+import { Radii, Typography } from "../../styles/typography";
+import { useTheme } from "../../theme/ThemeProvider";
 
 type AlertItem = {
-  id: number;
+  id: string;
   product: string;
   emoji: string;
   dropPct: number;
@@ -20,23 +25,113 @@ type AlertItem = {
   expanded: boolean;
 };
 
-const initialAlerts: AlertItem[] = [
-  { id: 1, product: "Salmon Fillet", emoji: "??", dropPct: 22, from: 12.99, to: 10.1, store: "FreshMart", timeKey: "minutesAgo", timeCount: 2, expanded: false },
-  { id: 2, product: "Almond Milk 1L", emoji: "??", dropPct: 15, from: 3.49, to: 2.99, store: "NatureMart", timeKey: "minutesAgo", timeCount: 18, expanded: false },
-  { id: 3, product: "Avocado x4", emoji: "??", dropPct: 30, from: 4.99, to: 3.49, store: "FreshMart", timeKey: "hoursAgo", timeCount: 1, expanded: false },
-];
-
 const savingsFilters = [0, 10, 20, 30];
 
 export function AlertsScreen() {
   const insets = useSafeAreaInsets();
   const { t, i18n } = useTranslation();
-  const [alerts, setAlerts] = useState(initialAlerts);
+  const { colors } = useTheme();
+  const { getLists } = useLists();
+  const { getPrices } = usePrices();
+  const { getProductsByIds } = useProducts();
+  const { getStores } = useStores();
+  const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [showFilters, setShowFilters] = useState(false);
-  const allStoresLabel = t("common.all");
-  const storeFilters = [allStoresLabel, "FreshMart", "NatureMart"];
-  const [storeFilter, setStoreFilter] = useState(allStoresLabel);
+  const [storeFilter, setStoreFilter] = useState(t("common.all"));
   const [minSavings, setMinSavings] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
+  const allStoresLabel = t("common.all");
+
+  const loadAlerts = useCallback(async () => {
+    setIsLoading(true);
+    setLoadError(null);
+
+    try {
+      const lists = await getLists();
+      const items = (Array.isArray(lists) ? lists : []).flatMap((list) => list.items ?? []);
+      const productIds = [...new Set(items.map((item) => item.productId))];
+
+      if (!productIds.length) {
+        setAlerts([]);
+        return;
+      }
+
+      const products = await getProductsByIds(productIds).catch(() => []);
+      const productsById = (products ?? []).reduce<Record<string, Product>>((acc, product) => {
+        acc[product.id] = product;
+        return acc;
+      }, {});
+
+      const priceGroups = await Promise.all(
+        productIds.map(async (productId) => ({
+          productId,
+          prices: await getPrices(productId).catch(() => []),
+        })),
+      );
+
+      const storeIds = [...new Set(priceGroups.flatMap((group) => group.prices.map((price) => price.storeId)))];
+      const stores = storeIds.length ? await getStores({ ids: storeIds.join(",") }).catch(() => []) : [];
+      const storesById = (stores ?? []).reduce<Record<string, StoreResponse>>((acc, store) => {
+        acc[store.id] = store;
+        return acc;
+      }, {});
+
+      const nextAlerts = priceGroups.flatMap(({ productId, prices }) => {
+        const validPrices = (prices ?? []).filter((price) => typeof price.price === "number");
+        if (validPrices.length < 2) return [];
+
+        const sorted = [...validPrices].sort((a, b) => a.price - b.price);
+        const best = sorted[0];
+        const highest = sorted[sorted.length - 1];
+        const savings = highest.price - best.price;
+
+        if (savings <= 0) return [];
+
+        const dropPct = Math.round((savings / highest.price) * 100);
+        const productName = productsById[productId]?.name ?? t("common.unknownProduct");
+        const updatedAt = best.updatedAt ? new Date(best.updatedAt) : null;
+        const diffMs = updatedAt ? Math.max(Date.now() - updatedAt.getTime(), 0) : 0;
+        const diffMinutes = Math.max(Math.round(diffMs / 60000), 1);
+        const timeKey: AlertItem["timeKey"] = diffMinutes < 60 ? "minutesAgo" : "hoursAgo";
+        const timeCount = timeKey === "minutesAgo" ? diffMinutes : Math.max(Math.round(diffMinutes / 60), 1);
+
+        return [{
+          id: `${productId}-${best.storeId}`,
+          product: productName,
+          emoji: getBadge(productName),
+          dropPct,
+          from: highest.price,
+          to: best.price,
+          store: storesById[best.storeId]?.name ?? t("common.unknownStore"),
+          timeKey,
+          timeCount,
+          expanded: false,
+        }];
+      });
+
+      setAlerts(nextAlerts.sort((a, b) => b.dropPct - a.dropPct));
+    } catch (error) {
+      console.error(error);
+      setAlerts([]);
+      setLoadError(error instanceof Error ? error.message : t("errors.requestFailed"));
+    } finally {
+      setIsLoading(false);
+    }
+  }, [getLists, getPrices, getProductsByIds, getStores, t]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadAlerts();
+    }, [loadAlerts]),
+  );
+
+  const storeFilters = useMemo(
+    () => [allStoresLabel, ...new Set(alerts.map((alert) => alert.store))],
+    [alerts, allStoresLabel],
+  );
 
   const filteredAlerts = useMemo(() => {
     return alerts.filter((alert) => {
@@ -48,13 +143,13 @@ export function AlertsScreen() {
 
   const totalSavings = filteredAlerts.reduce((sum, alert) => sum + (alert.from - alert.to), 0);
 
-  const toggleExpand = (id: number) => {
+  const toggleExpand = (id: string) => {
     setAlerts((current) =>
       current.map((alert) => (alert.id === id ? { ...alert, expanded: !alert.expanded } : alert)),
     );
   };
 
-  const dismissAlert = (id: number) => {
+  const dismissAlert = (id: string) => {
     setAlerts((current) => current.filter((alert) => alert.id !== id));
   };
 
@@ -68,7 +163,7 @@ export function AlertsScreen() {
           </Text>
         </View>
         <TouchableOpacity style={styles.filterButton} onPress={() => setShowFilters((value) => !value)}>
-          <Filter size={18} color={Colors.primary600} />
+          <Filter size={18} color={colors.primary600} />
         </TouchableOpacity>
       </View>
 
@@ -106,7 +201,7 @@ export function AlertsScreen() {
 
       <View style={styles.summaryCard}>
         <View style={styles.summaryIcon}>
-          <TrendingDown size={16} color={Colors.surface} />
+          <TrendingDown size={16} color={colors.surface} />
         </View>
         <View>
           <Text style={styles.summaryTitle}>{t("alertsScreen.todayPriceDrops")}</Text>
@@ -116,7 +211,11 @@ export function AlertsScreen() {
       </View>
 
       <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
-        {filteredAlerts.length ? (
+        {isLoading ? (
+          <View style={styles.loadingState}>
+            <ActivityIndicator color={colors.primary600} />
+          </View>
+        ) : filteredAlerts.length ? (
           filteredAlerts.map((alert) => (
             <View key={alert.id} style={styles.card}>
               <TouchableOpacity style={styles.cardHeader} onPress={() => toggleExpand(alert.id)} activeOpacity={0.85}>
@@ -126,17 +225,17 @@ export function AlertsScreen() {
                 <View style={styles.cardBody}>
                   <Text style={styles.productName}>{alert.product}</Text>
                   <Text style={styles.metaText}>
-                    {alert.store} · {t(`alertsScreen.${alert.timeKey}`, { count: alert.timeCount })}
+                    {alert.store} | {t(`alertsScreen.${alert.timeKey}`, { count: alert.timeCount })}
                   </Text>
                 </View>
                 <View style={styles.priceBox}>
-                  <Text style={styles.dropText}>? {alert.dropPct}%</Text>
+                  <Text style={styles.dropText}>{alert.dropPct}%</Text>
                   <Text style={styles.newPrice}>{formatCurrency(alert.to, i18n.language)}</Text>
                   <Text style={styles.oldPrice}>{formatCurrency(alert.from, i18n.language)}</Text>
                 </View>
                 <ChevronDown
                   size={18}
-                  color={Colors.gray400}
+                  color={colors.gray400}
                   style={{ transform: [{ rotate: alert.expanded ? "180deg" : "0deg" }] }}
                 />
               </TouchableOpacity>
@@ -151,7 +250,7 @@ export function AlertsScreen() {
                       <Text style={styles.addButtonText}>{t("alertsScreen.addToList")}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.dismissButton} onPress={() => dismissAlert(alert.id)} activeOpacity={0.85}>
-                      <X size={16} color={Colors.gray600} />
+                      <X size={16} color={colors.gray600} />
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -160,9 +259,9 @@ export function AlertsScreen() {
           ))
         ) : (
           <View style={styles.emptyState}>
-            <Bell size={34} color={Colors.gray300} />
-            <Text style={styles.emptyTitle}>{t("alertsScreen.noAlerts")}</Text>
-            <Text style={styles.emptySubtitle}>{t("alertsScreen.adjustFilters")}</Text>
+            <Bell size={34} color={colors.gray300} />
+            <Text style={styles.emptyTitle}>{loadError ? t("errors.requestFailed") : t("alertsScreen.noAlerts")}</Text>
+            <Text style={styles.emptySubtitle}>{loadError ?? t("alertsScreen.adjustFilters")}</Text>
           </View>
         )}
       </ScrollView>
@@ -170,8 +269,19 @@ export function AlertsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+function getBadge(value: string) {
+  return value
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("")
+    .slice(0, 2) || "PK";
+}
+
+function createStyles(colors: ReturnType<typeof useTheme>["colors"]) {
+  return StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -179,32 +289,32 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 16,
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
   },
-  title: { fontSize: Typography["3xl"], fontWeight: "700", color: Colors.gray900 },
-  subtitle: { fontSize: Typography.base, color: Colors.gray500, marginTop: 4 },
+  title: { fontSize: Typography["3xl"], fontWeight: "700", color: colors.gray900 },
+  subtitle: { fontSize: Typography.base, color: colors.gray500, marginTop: 4 },
   filterButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: Colors.primary50,
+    backgroundColor: colors.primary50,
     alignItems: "center",
     justifyContent: "center",
   },
-  filterPanel: { backgroundColor: Colors.surface, paddingHorizontal: 20, paddingBottom: 16, gap: 10 },
-  filterLabel: { fontSize: Typography.sm, fontWeight: "700", color: Colors.gray500, textTransform: "uppercase" },
+  filterPanel: { backgroundColor: colors.surface, paddingHorizontal: 20, paddingBottom: 16, gap: 10 },
+  filterLabel: { fontSize: Typography.sm, fontWeight: "700", color: colors.gray500, textTransform: "uppercase" },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: Radii.xl, backgroundColor: Colors.gray100 },
-  chipActive: { backgroundColor: Colors.primary600 },
-  greenChipActive: { backgroundColor: Colors.success500 },
-  chipText: { fontSize: Typography.sm, fontWeight: "600", color: Colors.gray600 },
-  chipTextActive: { color: Colors.surface },
+  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: Radii.xl, backgroundColor: colors.gray100 },
+  chipActive: { backgroundColor: colors.primary600 },
+  greenChipActive: { backgroundColor: colors.success500 },
+  chipText: { fontSize: Typography.sm, fontWeight: "600", color: colors.gray600 },
+  chipTextActive: { color: colors.surface },
   summaryCard: {
     margin: 20,
     marginBottom: 12,
     padding: 16,
     borderRadius: Radii["2xl"],
-    backgroundColor: Colors.success50,
+    backgroundColor: colors.success50,
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
@@ -213,54 +323,56 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: Colors.success500,
+    backgroundColor: colors.success500,
     alignItems: "center",
     justifyContent: "center",
   },
-  summaryTitle: { fontSize: Typography.base, fontWeight: "700", color: Colors.gray900 },
-  summarySubtitle: { fontSize: Typography.sm, color: Colors.gray500, marginTop: 2 },
-  summaryValue: { marginLeft: "auto", fontSize: Typography["2xl"], fontWeight: "800", color: Colors.success500 },
+  summaryTitle: { fontSize: Typography.base, fontWeight: "700", color: colors.gray900 },
+  summarySubtitle: { fontSize: Typography.sm, color: colors.gray500, marginTop: 2 },
+  summaryValue: { marginLeft: "auto", fontSize: Typography["2xl"], fontWeight: "800", color: colors.success500 },
   list: { flex: 1 },
   listContent: { paddingHorizontal: 20, paddingBottom: 28, gap: 12 },
-  card: { backgroundColor: Colors.surface, borderRadius: Radii["2xl"], overflow: "hidden" },
+  card: { backgroundColor: colors.surface, borderRadius: Radii["2xl"], overflow: "hidden" },
   cardHeader: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16 },
   emojiBox: {
     width: 48,
     height: 48,
     borderRadius: Radii.xl,
-    backgroundColor: Colors.gray50,
+    backgroundColor: colors.gray50,
     alignItems: "center",
     justifyContent: "center",
   },
-  emoji: { fontSize: 24 },
+  emoji: { fontSize: 16, fontWeight: "800", color: colors.gray900 },
   cardBody: { flex: 1 },
-  productName: { fontSize: Typography.md, fontWeight: "700", color: Colors.gray900 },
-  metaText: { fontSize: Typography.sm, color: Colors.gray500, marginTop: 3 },
+  productName: { fontSize: Typography.md, fontWeight: "700", color: colors.gray900 },
+  metaText: { fontSize: Typography.sm, color: colors.gray500, marginTop: 3 },
   priceBox: { alignItems: "flex-end", marginRight: 4 },
-  dropText: { fontSize: Typography.sm, fontWeight: "700", color: Colors.success500 },
-  newPrice: { fontSize: Typography.lg, fontWeight: "800", color: Colors.gray900, marginTop: 3 },
-  oldPrice: { fontSize: Typography.sm, color: Colors.gray400, textDecorationLine: "line-through" },
-  expanded: { borderTopWidth: 1, borderTopColor: Colors.gray100, padding: 16, gap: 12 },
-  expandedText: { fontSize: Typography.base, color: Colors.gray600, lineHeight: 20 },
+  dropText: { fontSize: Typography.sm, fontWeight: "700", color: colors.success500 },
+  newPrice: { fontSize: Typography.lg, fontWeight: "800", color: colors.gray900, marginTop: 3 },
+  oldPrice: { fontSize: Typography.sm, color: colors.gray400, textDecorationLine: "line-through" },
+  expanded: { borderTopWidth: 1, borderTopColor: colors.gray100, padding: 16, gap: 12 },
+  expandedText: { fontSize: Typography.base, color: colors.gray600, lineHeight: 20 },
   expandedActions: { flexDirection: "row", gap: 10 },
   addButton: {
     flex: 1,
     height: 44,
     borderRadius: Radii.xl,
-    backgroundColor: Colors.primary600,
+    backgroundColor: colors.primary600,
     alignItems: "center",
     justifyContent: "center",
   },
-  addButtonText: { fontSize: Typography.base, fontWeight: "700", color: Colors.surface },
+  addButtonText: { fontSize: Typography.base, fontWeight: "700", color: colors.surface },
   dismissButton: {
     width: 44,
     height: 44,
     borderRadius: Radii.xl,
-    backgroundColor: Colors.gray100,
+    backgroundColor: colors.gray100,
     alignItems: "center",
     justifyContent: "center",
   },
+  loadingState: { alignItems: "center", justifyContent: "center", paddingVertical: 48 },
   emptyState: { alignItems: "center", justifyContent: "center", paddingVertical: 48, gap: 8 },
-  emptyTitle: { fontSize: Typography.lg, fontWeight: "700", color: Colors.gray700 },
-  emptySubtitle: { fontSize: Typography.base, color: Colors.gray500, textAlign: "center" },
-});
+  emptyTitle: { fontSize: Typography.lg, fontWeight: "700", color: colors.gray700 },
+  emptySubtitle: { fontSize: Typography.base, color: colors.gray500, textAlign: "center" },
+  });
+}

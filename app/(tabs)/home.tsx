@@ -6,6 +6,9 @@ export default function HomeTab() {
 
   return (
     <HomeScreen
+      onOpenList={(listId) => {
+        router.push(`/lists/${listId}` as never);
+      }}
       onNavigate={(tab) => {
         if (tab === "alerts") {
           router.push("/alerts");

@@ -7,9 +7,9 @@ import { usePrices } from "../../api/usePrices";
 import { useProducts, type Category, type Product } from "../../api/useProducts";
 import { useStores } from "../../api/useStores";
 import { formatCurrency } from "../../i18n/formatters";
-import { Colors } from "../../styles/colors";
 import { Radii, Typography } from "../../styles/typography";
 import { getCategoryImage } from "../../utils/categoryImages";
+import { useTheme } from "../../theme/ThemeProvider";
 
 type StoreRow = {
   id: string;
@@ -20,6 +20,7 @@ type StoreRow = {
 export function PricesScreen() {
   const insets = useSafeAreaInsets();
   const { t, i18n } = useTranslation();
+  const { colors } = useTheme();
   const { searchProducts, getMainCategories, getSubCategories, getProductsByCategory } = useProducts();
   const { getPrices } = usePrices();
   const { getStores } = useStores();
@@ -39,6 +40,7 @@ export function PricesScreen() {
   const [isLoadingProducts, setIsLoadingProducts] = useState(false);
   const [isLoadingStores, setIsLoadingStores] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   const resetCategorySelection = () => {
     setSelectedMainCat(null);
@@ -269,12 +271,12 @@ export function PricesScreen() {
         <Text style={styles.title}>{t("prices.title")}</Text>
         <Text style={styles.subtitle}>{t("prices.subtitle")}</Text>
         <View style={styles.searchBox}>
-          <Search size={16} color={Colors.gray400} />
+          <Search size={16} color={colors.gray400} />
           <TextInput
             value={searchQuery}
             onChangeText={handleSearchChange}
             placeholder={t("prices.searchPlaceholder")}
-            placeholderTextColor={Colors.gray400}
+            placeholderTextColor={colors.gray400}
             style={styles.searchInput}
           />
         </View>
@@ -291,7 +293,7 @@ export function PricesScreen() {
 
         {isLoadingCats ? (
           <View style={styles.loadingInline}>
-            <Loader size={16} color={Colors.gray400} />
+            <Loader size={16} color={colors.gray400} />
             <Text style={styles.loadingInlineText}>{t("prices.loading")}</Text>
           </View>
         ) : (
@@ -312,7 +314,7 @@ export function PricesScreen() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.subCatScroll} contentContainerStyle={styles.catScrollContent}>
           {isLoadingSubCats ? (
             <View style={styles.loadingInline}>
-              <Loader size={16} color={Colors.gray400} />
+              <Loader size={16} color={colors.gray400} />
               <Text style={styles.loadingInlineText}>{t("prices.loading")}</Text>
             </View>
           ) : subCategories.length > 0 ? (
@@ -340,7 +342,7 @@ export function PricesScreen() {
 
           {isLoadingProducts ? (
             <View style={styles.loadingRow}>
-              <Loader size={16} color={Colors.gray400} />
+              <Loader size={16} color={colors.gray400} />
               <Text style={styles.loadingText}>{t("prices.loadingProducts")}</Text>
             </View>
           ) : products.length > 0 ? (
@@ -419,15 +421,15 @@ export function PricesScreen() {
         <View style={styles.sortRow}>
           <View style={styles.storeCountRow}>
             <Text style={styles.storeCount}>{t("prices.stores", { count: sortedStores.length })}</Text>
-            {isLoadingStores && <Loader size={16} color={Colors.gray400} />}
+            {isLoadingStores && <Loader size={16} color={colors.gray400} />}
           </View>
           <View style={styles.sortButtonsRow}>
             <TouchableOpacity style={styles.sortBtn} onPress={() => setSortBy(sortBy === "price" ? "distance" : "price")} activeOpacity={0.85}>
-              <ArrowUpDown size={14} color={Colors.gray500} />
+              <ArrowUpDown size={14} color={colors.gray500} />
               <Text style={styles.sortBtnText}>{sortBy === "price" ? t("prices.sortPrice") : t("prices.sortDistance")}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.sortBtn, mapView && styles.mapBtnActive]} onPress={() => setMapView(!mapView)} activeOpacity={0.85}>
-              <MapPin size={14} color={mapView ? Colors.surface : Colors.gray500} />
+              <MapPin size={14} color={mapView ? colors.surface : colors.gray500} />
               <Text style={[styles.sortBtnText, mapView && styles.mapBtnTextActive]}>{t("prices.map")}</Text>
             </TouchableOpacity>
           </View>
@@ -443,17 +445,17 @@ export function PricesScreen() {
                   {
                     left: `${20 + index * 22}%`,
                     top: `${25 + (index % 2) * 35}%`,
-                    backgroundColor: index === 0 ? Colors.primary600 : Colors.surface,
+                    backgroundColor: index === 0 ? colors.primary600 : colors.surface,
                   },
                 ]}
               >
-                <Text style={{ fontSize: 11, fontWeight: "700", color: index === 0 ? Colors.surface : Colors.gray900 }}>
+                <Text style={{ fontSize: 11, fontWeight: "700", color: index === 0 ? colors.surface : colors.gray900 }}>
                   {formatCurrency(store.price, i18n.language)}
                 </Text>
               </View>
             ))}
             <View style={styles.userPin}>
-              <Navigation size={16} color={Colors.surface} fill={Colors.surface} />
+              <Navigation size={16} color={colors.surface} fill={colors.surface} />
             </View>
           </View>
         )}
@@ -474,7 +476,7 @@ export function PricesScreen() {
                     </View>
                   </View>
                   <View style={{ alignItems: "flex-end" }}>
-                    <Text style={[styles.storePrice, index === 0 && { color: Colors.success500 }]}>{formatCurrency(store.price, i18n.language)}</Text>
+                    <Text style={[styles.storePrice, index === 0 && { color: colors.success500 }]}>{formatCurrency(store.price, i18n.language)}</Text>
                     {index > 0 && sortedStores[0] && (
                       <Text style={styles.storeExtra}>{t("prices.more", { amount: formatCurrency(store.price - sortedStores[0].price, i18n.language) })}</Text>
                     )}
@@ -489,77 +491,79 @@ export function PricesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  header: { backgroundColor: Colors.surface, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16 },
-  title: { fontSize: 24, fontWeight: "700", color: Colors.gray900 },
-  subtitle: { fontSize: 14, color: Colors.gray400, marginBottom: 16 },
-  searchBox: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: Colors.gray50, borderRadius: Radii["2xl"], paddingHorizontal: 16, height: 44 },
-  searchInput: { flex: 1, fontSize: Typography.base, color: Colors.gray900 },
-  catScroll: { backgroundColor: Colors.surface, paddingVertical: 10, maxHeight: 56 },
-  subCatScroll: { backgroundColor: Colors.surface, paddingBottom: 10, maxHeight: 56 },
+function createStyles(colors: ReturnType<typeof useTheme>["colors"]) {
+  return StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
+  header: { backgroundColor: colors.surface, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16 },
+  title: { fontSize: 24, fontWeight: "700", color: colors.gray900 },
+  subtitle: { fontSize: 14, color: colors.gray400, marginBottom: 16 },
+  searchBox: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: colors.gray50, borderRadius: Radii["2xl"], paddingHorizontal: 16, height: 44 },
+  searchInput: { flex: 1, fontSize: Typography.base, color: colors.gray900 },
+  catScroll: { backgroundColor: colors.surface, paddingVertical: 10, maxHeight: 56 },
+  subCatScroll: { backgroundColor: colors.surface, paddingBottom: 10, maxHeight: 56 },
   catScrollContent: { paddingHorizontal: 20, gap: 8, alignItems: "center" },
-  catChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: Radii.lg, backgroundColor: Colors.gray100 },
-  catChipActive: { backgroundColor: Colors.primary600 },
-  catText: { fontSize: 13, fontWeight: "600", color: Colors.gray500 },
-  catTextActive: { color: Colors.surface },
-  subCatChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: Radii.lg, backgroundColor: Colors.gray100 },
-  subCatChipActive: { backgroundColor: Colors.gray900 },
-  subCatText: { fontSize: 13, fontWeight: "600", color: Colors.gray500 },
-  subCatTextActive: { color: Colors.surface },
+  catChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: Radii.lg, backgroundColor: colors.gray100 },
+  catChipActive: { backgroundColor: colors.primary600 },
+  catText: { fontSize: 13, fontWeight: "600", color: colors.gray500 },
+  catTextActive: { color: colors.surface },
+  subCatChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: Radii.lg, backgroundColor: colors.gray100 },
+  subCatChipActive: { backgroundColor: colors.gray900 },
+  subCatText: { fontSize: 13, fontWeight: "600", color: colors.gray500 },
+  subCatTextActive: { color: colors.surface },
   loadingInline: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 6 },
-  loadingInlineText: { fontSize: 13, fontWeight: "600", color: Colors.gray400 },
-  emptyInline: { fontSize: 13, fontWeight: "600", color: Colors.gray400, paddingVertical: 8 },
+  loadingInlineText: { fontSize: 13, fontWeight: "600", color: colors.gray400 },
+  emptyInline: { fontSize: 13, fontWeight: "600", color: colors.gray400, paddingVertical: 8 },
   section: { paddingHorizontal: 20, paddingTop: 16 },
-  sectionLabel: { fontSize: 12, fontWeight: "600", color: Colors.gray500, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 10 },
+  sectionLabel: { fontSize: 12, fontWeight: "600", color: colors.gray500, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 10 },
   errorText: { marginBottom: 10, fontSize: 12, fontWeight: "600", color: "#DC2626" },
   loadingRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 8 },
-  loadingText: { fontSize: 13, fontWeight: "600", color: Colors.gray400 },
+  loadingText: { fontSize: 13, fontWeight: "600", color: colors.gray400 },
   productsWrap: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  productCard: { width: "48.5%", borderRadius: Radii["2xl"], borderWidth: 2, borderColor: Colors.gray100, backgroundColor: Colors.surface, padding: 12 },
-  productCardActive: { borderColor: Colors.primary600, backgroundColor: Colors.primary50 },
+  productCard: { width: "48.5%", borderRadius: Radii["2xl"], borderWidth: 2, borderColor: colors.gray100, backgroundColor: colors.surface, padding: 12 },
+  productCardActive: { borderColor: colors.primary600, backgroundColor: colors.primary50 },
   productRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  productImageBox: { width: 44, height: 44, borderRadius: Radii.xl, backgroundColor: Colors.gray50, alignItems: "center", justifyContent: "center", overflow: "hidden" },
+  productImageBox: { width: 44, height: 44, borderRadius: Radii.xl, backgroundColor: colors.gray50, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   productImage: { width: "100%", height: "100%" },
-  productFallback: { fontSize: 12, fontWeight: "800", color: Colors.gray900 },
-  productName: { flex: 1, fontSize: 13, fontWeight: "700", color: Colors.gray900, lineHeight: 18 },
-  productNameActive: { color: Colors.primary600 },
-  emptyStateText: { fontSize: 13, fontWeight: "600", color: Colors.gray400 },
-  detailCard: { borderRadius: Radii["3xl"], padding: 20, backgroundColor: Colors.primary600, shadowColor: Colors.primary600, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 8 },
+  productFallback: { fontSize: 12, fontWeight: "800", color: colors.gray900 },
+  productName: { flex: 1, fontSize: 13, fontWeight: "700", color: colors.gray900, lineHeight: 18 },
+  productNameActive: { color: colors.primary600 },
+  emptyStateText: { fontSize: 13, fontWeight: "600", color: colors.gray400 },
+  detailCard: { borderRadius: Radii["3xl"], padding: 20, backgroundColor: colors.primary600, shadowColor: colors.primary600, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 8 },
   detailTopRow: { flexDirection: "row", alignItems: "center", gap: 16 },
   detailImageBox: { width: 56, height: 56, borderRadius: Radii.xl, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center", overflow: "hidden" },
   detailImage: { width: "100%", height: "100%" },
-  detailFallback: { fontSize: 16, fontWeight: "800", color: Colors.surface },
+  detailFallback: { fontSize: 16, fontWeight: "800", color: colors.surface },
   detailCategory: { fontSize: 12, color: "#C7D2FE" },
-  detailName: { fontSize: 16, fontWeight: "700", color: Colors.surface },
+  detailName: { fontSize: 16, fontWeight: "700", color: colors.surface },
   detailStatsRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 16 },
   detailLabel: { fontSize: 11, color: "#C7D2FE" },
-  detailPrice: { fontSize: 26, fontWeight: "800", color: Colors.surface },
+  detailPrice: { fontSize: 26, fontWeight: "800", color: colors.surface },
   detailSavingsRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   detailSavings: { fontSize: 18, fontWeight: "700", color: "#6EE7B7" },
-  placeholderCard: { backgroundColor: Colors.surface, borderRadius: Radii["3xl"], padding: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 },
-  placeholderTitle: { fontSize: 14, fontWeight: "700", color: Colors.gray900 },
-  placeholderText: { marginTop: 4, fontSize: 12, color: Colors.gray400 },
+  placeholderCard: { backgroundColor: colors.surface, borderRadius: Radii["3xl"], padding: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 },
+  placeholderTitle: { fontSize: 14, fontWeight: "700", color: colors.gray900 },
+  placeholderText: { marginTop: 4, fontSize: 12, color: colors.gray400 },
   sortRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, marginTop: 16, marginBottom: 12 },
   storeCountRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  storeCount: { fontSize: 14, fontWeight: "700", color: Colors.gray700 },
+  storeCount: { fontSize: 14, fontWeight: "700", color: colors.gray700 },
   sortButtonsRow: { flexDirection: "row", gap: 8 },
-  sortBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: Colors.gray100, borderRadius: Radii.xl },
-  sortBtnText: { fontSize: 12, fontWeight: "600", color: Colors.gray600 },
-  mapBtnActive: { backgroundColor: Colors.primary600 },
-  mapBtnTextActive: { color: Colors.surface },
-  mapPlaceholder: { marginHorizontal: 20, marginBottom: 16, height: 160, borderRadius: Radii["2xl"], backgroundColor: Colors.primary50, position: "relative", overflow: "hidden" },
+  sortBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: colors.gray100, borderRadius: Radii.xl },
+  sortBtnText: { fontSize: 12, fontWeight: "600", color: colors.gray600 },
+  mapBtnActive: { backgroundColor: colors.primary600 },
+  mapBtnTextActive: { color: colors.surface },
+  mapPlaceholder: { marginHorizontal: 20, marginBottom: 16, height: 160, borderRadius: Radii["2xl"], backgroundColor: colors.primary50, position: "relative", overflow: "hidden" },
   mapPin: { position: "absolute", paddingHorizontal: 8, paddingVertical: 4, borderRadius: Radii.lg, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 4, elevation: 4 },
   userPin: { position: "absolute", bottom: 12, right: 12, width: 32, height: 32, borderRadius: 16, backgroundColor: "#3B82F6", alignItems: "center", justifyContent: "center" },
   storesSection: { paddingHorizontal: 20, paddingBottom: 32, gap: 12 },
-  storeCard: { backgroundColor: Colors.surface, borderRadius: Radii["2xl"], padding: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
+  storeCard: { backgroundColor: colors.surface, borderRadius: Radii["2xl"], padding: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
   storeHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   storeLeftRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  rankBadge: { width: 32, height: 32, borderRadius: Radii.lg, backgroundColor: Colors.gray100, alignItems: "center", justifyContent: "center" },
-  rankBadgeActive: { backgroundColor: Colors.primary600 },
-  rankText: { fontSize: 13, fontWeight: "700", color: Colors.gray500 },
-  rankTextActive: { color: Colors.surface },
-  storeName: { fontSize: 14, fontWeight: "700", color: Colors.gray900 },
-  storePrice: { fontSize: 20, fontWeight: "800", color: Colors.gray900 },
+  rankBadge: { width: 32, height: 32, borderRadius: Radii.lg, backgroundColor: colors.gray100, alignItems: "center", justifyContent: "center" },
+  rankBadgeActive: { backgroundColor: colors.primary600 },
+  rankText: { fontSize: 13, fontWeight: "700", color: colors.gray500 },
+  rankTextActive: { color: colors.surface },
+  storeName: { fontSize: 14, fontWeight: "700", color: colors.gray900 },
+  storePrice: { fontSize: 20, fontWeight: "800", color: colors.gray900 },
   storeExtra: { fontSize: 11, color: "#F87171" },
-});
+  });
+}
