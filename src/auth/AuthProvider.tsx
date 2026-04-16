@@ -10,12 +10,13 @@ import {
 import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
 import * as SecureStore from "expo-secure-store";
+import { i18n } from "../i18n";
 import { KEYCLOAK_CLIENT, isKeycloakConfigured, keycloakDiscovery } from "./keycloak";
 
 WebBrowser.maybeCompleteAuthSession();
 
-const TOKEN_KEY    = "shopisel_access_token";
-const REFRESH_KEY  = "shopisel_refresh_token";
+const TOKEN_KEY = "shopisel_access_token";
+const REFRESH_KEY = "shopisel_refresh_token";
 
 type AuthUser = {
   name?: string;
@@ -61,8 +62,8 @@ function userFromToken(token: string | null): AuthUser | null {
   if (!token) return null;
   const parsed = parseJwt(token);
   return {
-    name:     parsed.name     as string | undefined,
-    email:    parsed.email    as string | undefined,
+    name: parsed.name as string | undefined,
+    email: parsed.email as string | undefined,
     username: parsed.preferred_username as string | undefined,
   };
 }
@@ -70,35 +71,31 @@ function userFromToken(token: string | null): AuthUser | null {
 type AuthProviderProps = { children: ReactNode };
 
 export function AuthProvider({ children }: AuthProviderProps) {
-  const [initialized, setInitialized]       = useState(false);
+  const [initialized, setInitialized] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [token, setToken]                   = useState<string | null>(null);
-  const [user, setUser]                     = useState<AuthUser | null>(null);
-  const [configError, setConfigError]       = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [configError, setConfigError] = useState<string | null>(null);
 
   const redirectUri = AuthSession.makeRedirectUri({ scheme: "shopisel" });
   console.log("[AuthProvider] redirectUri:", redirectUri);
 
-
   const [authRequest, authResponse, promptAsync] = AuthSession.useAuthRequest(
     isKeycloakConfigured && keycloakDiscovery
       ? {
-          clientId:     KEYCLOAK_CLIENT,
+          clientId: KEYCLOAK_CLIENT,
           redirectUri,
-          scopes:       ["openid", "profile", "email", "offline_access"],
-          usePKCE:      true,
+          scopes: ["openid", "profile", "email", "offline_access"],
+          usePKCE: true,
           responseType: AuthSession.ResponseType.Code,
         }
       : { clientId: "", redirectUri },
-    isKeycloakConfigured && keycloakDiscovery ? keycloakDiscovery : null
+    isKeycloakConfigured && keycloakDiscovery ? keycloakDiscovery : null,
   );
 
-  // Restore token on mount
   useEffect(() => {
     if (!isKeycloakConfigured) {
-      setConfigError(
-        "Keycloak não configurado. Define EXPO_PUBLIC_KEYCLOAK_URL, EXPO_PUBLIC_KEYCLOAK_REALM e EXPO_PUBLIC_KEYCLOAK_CLIENT."
-      );
+      setConfigError(i18n.t("errors.keycloakNotConfigured"));
       setInitialized(true);
       return;
     }
@@ -114,7 +111,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     })();
   }, []);
 
-  // Handle auth response (code exchange)
   useEffect(() => {
     if (authResponse?.type !== "success" || !keycloakDiscovery) return;
     const { code } = authResponse.params;
@@ -123,14 +119,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
       try {
         const tokenResult = await AuthSession.exchangeCodeAsync(
           {
-            clientId:     KEYCLOAK_CLIENT,
+            clientId: KEYCLOAK_CLIENT,
             redirectUri,
             code,
-            extraParams: authRequest?.codeVerifier
-              ? { code_verifier: authRequest.codeVerifier }
-              : {},
+            extraParams: authRequest?.codeVerifier ? { code_verifier: authRequest.codeVerifier } : {},
           },
-          keycloakDiscovery
+          keycloakDiscovery,
         );
         const accessToken = tokenResult.accessToken;
         await SecureStore.setItemAsync(TOKEN_KEY, accessToken);
@@ -140,11 +134,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
         setToken(accessToken);
         setUser(userFromToken(accessToken));
         setIsAuthenticated(true);
-      } catch (e) {
-        console.error("Token exchange failed", e);
+      } catch (error) {
+        console.error("Token exchange failed", error);
       }
     })();
-  }, [authResponse]);
+  }, [authRequest?.codeVerifier, authResponse, redirectUri]);
 
   const login = useCallback(async () => {
     await promptAsync();
@@ -180,7 +174,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
           clientId: KEYCLOAK_CLIENT,
           refreshToken: storedRefreshToken,
         },
-        keycloakDiscovery
+        keycloakDiscovery,
       );
 
       const nextAccessToken = refreshed.accessToken ?? token;
@@ -218,7 +212,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       logout,
       getAccessToken,
     }),
-    [initialized, isAuthenticated, token, user, configError, login, register, logout, getAccessToken]
+    [initialized, isAuthenticated, token, user, configError, login, register, logout, getAccessToken],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -2,8 +2,10 @@ import { useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Bell, ChevronDown, Filter, TrendingDown, X } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTranslation } from "react-i18next";
 import { Colors } from "../../styles/colors";
 import { Radii, Typography } from "../../styles/typography";
+import { formatCurrency } from "../../i18n/formatters";
 
 type AlertItem = {
   id: number;
@@ -13,33 +15,36 @@ type AlertItem = {
   from: number;
   to: number;
   store: string;
-  time: string;
+  timeKey: "minutesAgo" | "hoursAgo";
+  timeCount: number;
   expanded: boolean;
 };
 
 const initialAlerts: AlertItem[] = [
-  { id: 1, product: "Salmon Fillet", emoji: "🐟", dropPct: 22, from: 12.99, to: 10.1, store: "FreshMart", time: "2 min ago", expanded: false },
-  { id: 2, product: "Almond Milk 1L", emoji: "🥛", dropPct: 15, from: 3.49, to: 2.99, store: "NatureMart", time: "18 min ago", expanded: false },
-  { id: 3, product: "Avocado x4", emoji: "🥑", dropPct: 30, from: 4.99, to: 3.49, store: "FreshMart", time: "1 hr ago", expanded: false },
+  { id: 1, product: "Salmon Fillet", emoji: "??", dropPct: 22, from: 12.99, to: 10.1, store: "FreshMart", timeKey: "minutesAgo", timeCount: 2, expanded: false },
+  { id: 2, product: "Almond Milk 1L", emoji: "??", dropPct: 15, from: 3.49, to: 2.99, store: "NatureMart", timeKey: "minutesAgo", timeCount: 18, expanded: false },
+  { id: 3, product: "Avocado x4", emoji: "??", dropPct: 30, from: 4.99, to: 3.49, store: "FreshMart", timeKey: "hoursAgo", timeCount: 1, expanded: false },
 ];
 
-const storeFilters = ["Todas", "FreshMart", "NatureMart"];
 const savingsFilters = [0, 10, 20, 30];
 
 export function AlertsScreen() {
   const insets = useSafeAreaInsets();
+  const { t, i18n } = useTranslation();
   const [alerts, setAlerts] = useState(initialAlerts);
   const [showFilters, setShowFilters] = useState(false);
-  const [storeFilter, setStoreFilter] = useState("Todas");
+  const allStoresLabel = t("common.all");
+  const storeFilters = [allStoresLabel, "FreshMart", "NatureMart"];
+  const [storeFilter, setStoreFilter] = useState(allStoresLabel);
   const [minSavings, setMinSavings] = useState(0);
 
   const filteredAlerts = useMemo(() => {
     return alerts.filter((alert) => {
-      const matchesStore = storeFilter === "Todas" || alert.store === storeFilter;
+      const matchesStore = storeFilter === allStoresLabel || alert.store === storeFilter;
       const matchesSavings = alert.dropPct >= minSavings;
       return matchesStore && matchesSavings;
     });
-  }, [alerts, minSavings, storeFilter]);
+  }, [alerts, minSavings, storeFilter, allStoresLabel]);
 
   const totalSavings = filteredAlerts.reduce((sum, alert) => sum + (alert.from - alert.to), 0);
 
@@ -57,9 +62,9 @@ export function AlertsScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <View>
-          <Text style={styles.title}>Price alerts</Text>
+          <Text style={styles.title}>{t("alertsScreen.title")}</Text>
           <Text style={styles.subtitle}>
-            {filteredAlerts.length} alertas · poupança potencial de €{totalSavings.toFixed(2)}
+            {t("alertsScreen.subtitle", { count: filteredAlerts.length, amount: formatCurrency(totalSavings, i18n.language) })}
           </Text>
         </View>
         <TouchableOpacity style={styles.filterButton} onPress={() => setShowFilters((value) => !value)}>
@@ -69,7 +74,7 @@ export function AlertsScreen() {
 
       {showFilters && (
         <View style={styles.filterPanel}>
-          <Text style={styles.filterLabel}>Loja</Text>
+          <Text style={styles.filterLabel}>{t("alertsScreen.store")}</Text>
           <View style={styles.chipRow}>
             {storeFilters.map((store) => (
               <TouchableOpacity
@@ -82,7 +87,7 @@ export function AlertsScreen() {
             ))}
           </View>
 
-          <Text style={styles.filterLabel}>Desconto mínimo</Text>
+          <Text style={styles.filterLabel}>{t("alertsScreen.minimumDiscount")}</Text>
           <View style={styles.chipRow}>
             {savingsFilters.map((value) => (
               <TouchableOpacity
@@ -91,7 +96,7 @@ export function AlertsScreen() {
                 onPress={() => setMinSavings(value)}
               >
                 <Text style={[styles.chipText, minSavings === value && styles.chipTextActive]}>
-                  {value === 0 ? "Todos" : `${value}%+`}
+                  {value === 0 ? t("common.all") : `${value}%+`}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -104,10 +109,10 @@ export function AlertsScreen() {
           <TrendingDown size={16} color={Colors.surface} />
         </View>
         <View>
-          <Text style={styles.summaryTitle}>Quedas de preço hoje</Text>
-          <Text style={styles.summarySubtitle}>{filteredAlerts.length} produtos com desconto</Text>
+          <Text style={styles.summaryTitle}>{t("alertsScreen.todayPriceDrops")}</Text>
+          <Text style={styles.summarySubtitle}>{t("alertsScreen.discountedProducts", { count: filteredAlerts.length })}</Text>
         </View>
-        <Text style={styles.summaryValue}>€{totalSavings.toFixed(2)}</Text>
+        <Text style={styles.summaryValue}>{formatCurrency(totalSavings, i18n.language)}</Text>
       </View>
 
       <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
@@ -121,13 +126,13 @@ export function AlertsScreen() {
                 <View style={styles.cardBody}>
                   <Text style={styles.productName}>{alert.product}</Text>
                   <Text style={styles.metaText}>
-                    {alert.store} · {alert.time}
+                    {alert.store} � {t(`alertsScreen.${alert.timeKey}`, { count: alert.timeCount })}
                   </Text>
                 </View>
                 <View style={styles.priceBox}>
-                  <Text style={styles.dropText}>↓ {alert.dropPct}%</Text>
-                  <Text style={styles.newPrice}>€{alert.to.toFixed(2)}</Text>
-                  <Text style={styles.oldPrice}>€{alert.from.toFixed(2)}</Text>
+                  <Text style={styles.dropText}>? {alert.dropPct}%</Text>
+                  <Text style={styles.newPrice}>{formatCurrency(alert.to, i18n.language)}</Text>
+                  <Text style={styles.oldPrice}>{formatCurrency(alert.from, i18n.language)}</Text>
                 </View>
                 <ChevronDown
                   size={18}
@@ -139,11 +144,11 @@ export function AlertsScreen() {
               {alert.expanded && (
                 <View style={styles.expanded}>
                   <Text style={styles.expandedText}>
-                    Melhor preço atual em {alert.store}. Diferença total: €{(alert.from - alert.to).toFixed(2)}.
+                    {t("alertsScreen.currentBestPrice", { store: alert.store, amount: formatCurrency(alert.from - alert.to, i18n.language) })}
                   </Text>
                   <View style={styles.expandedActions}>
                     <TouchableOpacity style={styles.addButton} activeOpacity={0.85}>
-                      <Text style={styles.addButtonText}>Adicionar à lista</Text>
+                      <Text style={styles.addButtonText}>{t("alertsScreen.addToList")}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.dismissButton} onPress={() => dismissAlert(alert.id)} activeOpacity={0.85}>
                       <X size={16} color={Colors.gray600} />
@@ -156,8 +161,8 @@ export function AlertsScreen() {
         ) : (
           <View style={styles.emptyState}>
             <Bell size={34} color={Colors.gray300} />
-            <Text style={styles.emptyTitle}>Sem alertas com estes filtros</Text>
-            <Text style={styles.emptySubtitle}>Ajusta os filtros para voltares a ver resultados.</Text>
+            <Text style={styles.emptyTitle}>{t("alertsScreen.noAlerts")}</Text>
+            <Text style={styles.emptySubtitle}>{t("alertsScreen.adjustFilters")}</Text>
           </View>
         )}
       </ScrollView>

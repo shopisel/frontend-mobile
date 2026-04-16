@@ -20,14 +20,15 @@ import {
   Type,
   X,
 } from "lucide-react-native";
+import { useTranslation } from "react-i18next";
 import { getCategoryImage } from "../../utils/categoryImages";
 import { useProducts, type Category, type Product } from "../../api/useProducts";
 import { usePrices } from "../../api/usePrices";
 import { useStores, type StoreResponse } from "../../api/useStores";
 import { Colors } from "../../styles/colors";
 import { Radii, Typography } from "../../styles/typography";
+import { formatCurrency } from "../../i18n/formatters";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
 type InputMethod = "text" | "scan" | "category";
 
 export type AddListItemPayload = {
@@ -47,32 +48,30 @@ interface AddProductModalProps {
   onAddItem: (item: AddListItemPayload) => void;
 }
 
-
-
-// ─── Method toggle ────────────────────────────────────────────────────────────
 function MethodToggle({ method, onChange }: { method: InputMethod; onChange: (m: InputMethod) => void }) {
+  const { t } = useTranslation();
   const tabs: { id: InputMethod; label: string; Icon: typeof Type }[] = [
-    { id: "text",     label: "Search",   Icon: Type     },
-    { id: "scan",     label: "Scan",     Icon: ScanLine },
-    { id: "category", label: "Category", Icon: Grid3X3  },
+    { id: "text", label: t("addProduct.methodSearch"), Icon: Type },
+    { id: "scan", label: t("addProduct.methodScan"), Icon: ScanLine },
+    { id: "category", label: t("addProduct.methodCategory"), Icon: Grid3X3 },
   ];
 
-  const BG:  Record<InputMethod, string> = { text: Colors.primary50,   scan: "#F3E8FF",           category: "#ECFDF5" };
-  const CLR: Record<InputMethod, string> = { text: Colors.primary600,  scan: "#9333EA",           category: "#10B981" };
+  const background: Record<InputMethod, string> = { text: Colors.primary50, scan: "#F3E8FF", category: "#ECFDF5" };
+  const color: Record<InputMethod, string> = { text: Colors.primary600, scan: "#9333EA", category: "#10B981" };
 
   return (
-    <View style={mStyles.row}>
+    <View style={methodStyles.row}>
       {tabs.map(({ id, label, Icon }) => {
         const active = method === id;
         return (
           <TouchableOpacity
             key={id}
-            style={[mStyles.tab, active && { backgroundColor: BG[id] }]}
+            style={[methodStyles.tab, active && { backgroundColor: background[id] }]}
             onPress={() => onChange(id)}
             activeOpacity={0.8}
           >
-            <Icon size={15} color={active ? CLR[id] : Colors.gray500} />
-            <Text style={[mStyles.tabLabel, active && { color: CLR[id] }]}>{label}</Text>
+            <Icon size={15} color={active ? color[id] : Colors.gray500} />
+            <Text style={[methodStyles.tabLabel, active && { color: color[id] }]}>{label}</Text>
           </TouchableOpacity>
         );
       })}
@@ -80,75 +79,68 @@ function MethodToggle({ method, onChange }: { method: InputMethod; onChange: (m:
   );
 }
 
-// ─── Product row ──────────────────────────────────────────────────────────────
 function ProductRow({ product, onPress }: { product: Product; onPress: () => void }) {
-  const imgSrc = getCategoryImage(product.image);
+  const { t } = useTranslation();
+  const imageSource = getCategoryImage(product.image);
+
   return (
-    <TouchableOpacity style={pStyles.row} onPress={onPress} activeOpacity={0.85}>
-      <View style={pStyles.emoji}>
-        {imgSrc ? (
-          <Image source={imgSrc} style={{ width: 36, height: 36, borderRadius: 8 }} resizeMode="contain" />
+    <TouchableOpacity style={productStyles.row} onPress={onPress} activeOpacity={0.85}>
+      <View style={productStyles.emoji}>
+        {imageSource ? (
+          <Image source={imageSource} style={{ width: 36, height: 36, borderRadius: 8 }} resizeMode="contain" />
         ) : (
-          <Text style={{ fontSize: 20 }}>{product.emoji ?? "📦"}</Text>
+          <Text style={productStyles.fallbackBadge}>{product.emoji ?? "PK"}</Text>
         )}
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={pStyles.name} numberOfLines={1}>{product.name}</Text>
-        <Text style={pStyles.sub}>Toca para escolher loja</Text>
+        <Text style={productStyles.name} numberOfLines={1}>{product.name}</Text>
+        <Text style={productStyles.sub}>{t("addProduct.tapToChooseStore")}</Text>
       </View>
       <ChevronRight size={16} color={Colors.gray300} />
     </TouchableOpacity>
   );
 }
 
-// ─── Category card (grid) ─────────────────────────────────────────────────────
-function CatCard({ cat, onPress }: { cat: Category; onPress: () => void }) {
-  const imgSrc = getCategoryImage(cat.image, cat.name);
+function CategoryCard({ cat, onPress }: { cat: Category; onPress: () => void }) {
+  const imageSource = getCategoryImage(cat.image, cat.name);
   return (
-    <TouchableOpacity style={catStyles.card} onPress={onPress} activeOpacity={0.85}>
-      <View style={catStyles.icon}>
-        {imgSrc ? (
-          <Image source={imgSrc} style={{ width: 44, height: 44 }} resizeMode="contain" />
+    <TouchableOpacity style={categoryStyles.card} onPress={onPress} activeOpacity={0.85}>
+      <View style={categoryStyles.icon}>
+        {imageSource ? (
+          <Image source={imageSource} style={{ width: 44, height: 44 }} resizeMode="contain" />
         ) : (
-          <Text style={{ fontSize: 28 }}>🏷️</Text>
+          <Text style={categoryStyles.fallbackBadge}>{cat.name.slice(0, 2).toUpperCase()}</Text>
         )}
       </View>
-      <Text style={catStyles.label} numberOfLines={2}>{cat.name}</Text>
+      <Text style={categoryStyles.label} numberOfLines={2}>{cat.name}</Text>
     </TouchableOpacity>
   );
 }
 
-// ─── Main modal ───────────────────────────────────────────────────────────────
 export function AddProductModal({ visible, onClose, onAddItem }: AddProductModalProps) {
+  const { t, i18n } = useTranslation();
   const { searchProducts, getMainCategories, getSubCategories, getProductsByCategory } = useProducts();
   const { getPrices } = usePrices();
   const { getStores } = useStores();
 
-  const [method, setMethod]                     = useState<InputMethod>("text");
-  const [query, setQuery]                       = useState("");
-  const [products, setProducts]                 = useState<Product[]>([]);
-  const [loadingProducts, setLoadingProducts]   = useState(false);
-
-  // Category browse
-  const [mainCats, setMainCats]                 = useState<Category[]>([]);
-  const [subCats, setSubCats]                   = useState<Category[]>([]);
-  const [selectedCat, setSelectedCat]           = useState<Category | null>(null);
-  const [selectedSubCat, setSelectedSubCat]     = useState<Category | null>(null);
-  const [loadingCats, setLoadingCats]           = useState(false);
-
-  // Scan
-  const [isScanning, setIsScanning]             = useState(false);
-
-  // Store selection
-  const [selectedProduct, setSelectedProduct]   = useState<Product | null>(null);
-  const [stores, setStores]                     = useState<StoreResponse[]>([]);
-  const [priceByStore, setPriceByStore]         = useState<Record<string, number>>({});
-  const [loadingStores, setLoadingStores]       = useState(false);
-  const [addedCount, setAddedCount]             = useState(0);
+  const [method, setMethod] = useState<InputMethod>("text");
+  const [query, setQuery] = useState("");
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [mainCats, setMainCats] = useState<Category[]>([]);
+  const [subCats, setSubCats] = useState<Category[]>([]);
+  const [selectedCat, setSelectedCat] = useState<Category | null>(null);
+  const [selectedSubCat, setSelectedSubCat] = useState<Category | null>(null);
+  const [loadingCats, setLoadingCats] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [stores, setStores] = useState<StoreResponse[]>([]);
+  const [priceByStore, setPriceByStore] = useState<Record<string, number>>({});
+  const [loadingStores, setLoadingStores] = useState(false);
+  const [addedCount, setAddedCount] = useState(0);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Reset on close
   useEffect(() => {
     if (!visible) {
       setMethod("text");
@@ -166,23 +158,31 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
     }
   }, [visible]);
 
-  // ── Text search ──
   useEffect(() => {
     if (method !== "text" || selectedProduct) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (!query.trim()) { setProducts([]); return; }
+    if (!query.trim()) {
+      setProducts([]);
+      return;
+    }
 
     debounceRef.current = setTimeout(async () => {
       setLoadingProducts(true);
-      try { setProducts(await searchProducts(query.trim()) ?? []); }
-      catch (e) { console.error(e); setProducts([]); }
-      finally { setLoadingProducts(false); }
+      try {
+        setProducts((await searchProducts(query.trim())) ?? []);
+      } catch (error) {
+        console.error(error);
+        setProducts([]);
+      } finally {
+        setLoadingProducts(false);
+      }
     }, 400);
 
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [query, method, selectedProduct, searchProducts]);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [method, query, searchProducts, selectedProduct]);
 
-  // ── Load main categories (once, when method=category) ──
   useEffect(() => {
     if (method !== "category" || mainCats.length > 0) return;
     setLoadingCats(true);
@@ -190,49 +190,66 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
       .then((data) => setMainCats(data ?? []))
       .catch(console.error)
       .finally(() => setLoadingCats(false));
-  }, [method, mainCats.length, getMainCategories]);
+  }, [getMainCategories, mainCats.length, method]);
 
-  // ── Load subcategories when a main cat is selected ──
   useEffect(() => {
-    if (!selectedCat) { setSubCats([]); setProducts([]); return; }
+    if (!selectedCat) {
+      setSubCats([]);
+      setProducts([]);
+      return;
+    }
+
     setLoadingCats(true);
     getSubCategories(selectedCat.id)
       .then((data) => setSubCats(data ?? []))
       .catch(console.error)
       .finally(() => setLoadingCats(false));
-  }, [selectedCat, getSubCategories]);
+  }, [getSubCategories, selectedCat]);
 
-  // ── Load products when a sub-cat is selected ──
   useEffect(() => {
-    if (!selectedSubCat) { setProducts([]); return; }
+    if (!selectedSubCat) {
+      setProducts([]);
+      return;
+    }
+
     setLoadingProducts(true);
     getProductsByCategory(selectedSubCat.id)
       .then((data) => setProducts(data ?? []))
       .catch(console.error)
       .finally(() => setLoadingProducts(false));
-  }, [selectedSubCat, getProductsByCategory]);
+  }, [getProductsByCategory, selectedSubCat]);
 
-  // ── Load stores + prices when a product is selected ──
   useEffect(() => {
-    if (!selectedProduct) { setStores([]); setPriceByStore({}); return; }
+    if (!selectedProduct) {
+      setStores([]);
+      setPriceByStore({});
+      return;
+    }
+
     setLoadingStores(true);
     void (async () => {
       try {
         const prices = await getPrices(selectedProduct.id);
-        const storeIds = [...new Set(prices.map((p) => p.storeId))];
-        const priceMap = prices.reduce<Record<string, number>>((acc, p) => {
-          acc[p.storeId] = p.price;
+        const storeIds = [...new Set(prices.map((price) => price.storeId))];
+        const nextPriceMap = prices.reduce<Record<string, number>>((acc, price) => {
+          acc[price.storeId] = price.price;
           return acc;
         }, {});
-        setPriceByStore(priceMap);
-        if (!storeIds.length) { setStores([]); return; }
-        setStores(await getStores({ ids: storeIds.join(",") }) ?? []);
-      } catch (e) { console.error(e); setStores([]); }
-      finally { setLoadingStores(false); }
+        setPriceByStore(nextPriceMap);
+        if (!storeIds.length) {
+          setStores([]);
+          return;
+        }
+        setStores((await getStores({ ids: storeIds.join(",") })) ?? []);
+      } catch (error) {
+        console.error(error);
+        setStores([]);
+      } finally {
+        setLoadingStores(false);
+      }
     })();
-  }, [selectedProduct, getPrices, getStores]);
+  }, [getPrices, getStores, selectedProduct]);
 
-  // Simulate scan
   const startScan = () => {
     setIsScanning(true);
     setTimeout(() => setIsScanning(false), 1500);
@@ -240,11 +257,12 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
 
   const sortedStores = useMemo(
     () => [...stores].sort((a, b) => (priceByStore[a.id] ?? Infinity) - (priceByStore[b.id] ?? Infinity)),
-    [stores, priceByStore]
+    [priceByStore, stores],
   );
 
   const handleSelectStore = (store: StoreResponse) => {
     if (!selectedProduct) return;
+
     onAddItem({
       productId: selectedProduct.id,
       storeId: store.id,
@@ -252,23 +270,24 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
       price: priceByStore[store.id] ?? 0,
       checked: false,
       name: selectedProduct.name,
-      emoji: selectedProduct.emoji ?? "📦",
+      emoji: selectedProduct.emoji ?? "PK",
       storeName: store.name,
     });
-    setAddedCount((c) => c + 1);
+
+    setAddedCount((current) => current + 1);
     setTimeout(() => setSelectedProduct(null), 300);
   };
 
-  // ── Header title ──
   const headerTitle = selectedProduct
-    ? "Escolher loja"
+    ? t("addProduct.chooseStore")
     : selectedSubCat
-    ? selectedSubCat.name
-    : selectedCat
-    ? selectedCat.name
-    : "Adicionar produto";
+      ? selectedSubCat.name
+      : selectedCat
+        ? selectedCat.name
+        : t("addProduct.title");
 
-  const canGoBack = !!(selectedProduct || selectedSubCat || selectedCat);
+  const canGoBack = Boolean(selectedProduct || selectedSubCat || selectedCat);
+
   const handleBack = () => {
     if (selectedProduct) setSelectedProduct(null);
     else if (selectedSubCat) setSelectedSubCat(null);
@@ -280,10 +299,8 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
       <View style={styles.overlay}>
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
         <View style={styles.sheet}>
-          {/* Handle */}
           <View style={styles.handle} />
 
-          {/* Header */}
           <View style={styles.header}>
             {canGoBack ? (
               <TouchableOpacity style={styles.iconBtn} onPress={handleBack}>
@@ -295,7 +312,7 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
             <View style={{ flex: 1 }}>
               <Text style={styles.title}>{headerTitle}</Text>
               {addedCount > 0 && !selectedProduct && (
-                <Text style={styles.addedBadge}>{addedCount} item{addedCount !== 1 ? "s" : ""} adicionado{addedCount !== 1 ? "s" : ""}</Text>
+                <Text style={styles.addedBadge}>{t("addProduct.addedCount", { count: addedCount })}</Text>
               )}
             </View>
             <TouchableOpacity style={styles.iconBtn} onPress={onClose}>
@@ -303,23 +320,21 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
             </TouchableOpacity>
           </View>
 
-          {/* ── Store selection step ── */}
           {selectedProduct ? (
             <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-              {/* Product preview */}
               <View style={styles.productPreview}>
                 <View style={styles.productPreviewEmoji}>
-                  <Text style={{ fontSize: 28 }}>{selectedProduct.emoji ?? "📦"}</Text>
+                  <Text style={styles.previewBadge}>{selectedProduct.emoji ?? "PK"}</Text>
                 </View>
                 <Text style={styles.productPreviewName} numberOfLines={2}>{selectedProduct.name}</Text>
               </View>
 
-              <Text style={styles.sectionLabel}>Onde vais comprar?</Text>
+              <Text style={styles.sectionLabel}>{t("addProduct.whereToBuy")}</Text>
 
               {loadingStores ? (
                 <ActivityIndicator color={Colors.primary600} style={{ marginTop: 24 }} />
               ) : sortedStores.length ? (
-                sortedStores.map((store, i) => (
+                sortedStores.map((store, index) => (
                   <TouchableOpacity
                     key={store.id}
                     style={styles.storeRow}
@@ -331,25 +346,19 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.storeName}>{store.name}</Text>
-                      <Text style={styles.storeSub}>{i === 0 ? "Melhor preço" : "Preço disponível"}</Text>
+                      <Text style={styles.storeSub}>{index === 0 ? t("addProduct.bestPrice") : t("addProduct.priceAvailable")}</Text>
                     </View>
-                    <Text style={styles.storePrice}>
-                      €{(priceByStore[store.id] ?? 0).toFixed(2)}
-                    </Text>
+                    <Text style={styles.storePrice}>{formatCurrency(priceByStore[store.id] ?? 0, i18n.language)}</Text>
                   </TouchableOpacity>
                 ))
               ) : (
-                <Text style={styles.emptyText}>Sem lojas com preço disponível para este produto.</Text>
+                <Text style={styles.emptyText}>{t("addProduct.noStores")}</Text>
               )}
             </ScrollView>
           ) : (
             <>
-              {/* Method toggle — only at top level */}
-              {!selectedCat && (
-                <MethodToggle method={method} onChange={setMethod} />
-              )}
+              {!selectedCat && <MethodToggle method={method} onChange={setMethod} />}
 
-              {/* ── TEXT search ── */}
               {method === "text" && !selectedCat && (
                 <>
                   <View style={styles.searchBox}>
@@ -357,7 +366,7 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
                     <TextInput
                       value={query}
                       onChangeText={setQuery}
-                      placeholder="Pesquisar por nome..."
+                      placeholder={t("addProduct.searchPlaceholder")}
                       placeholderTextColor={Colors.gray400}
                       style={styles.searchInput}
                       autoFocus
@@ -366,14 +375,12 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
                   </View>
                   <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
                     {products.length > 0
-                      ? products.map((p) => <ProductRow key={p.id} product={p} onPress={() => setSelectedProduct(p)} />)
-                      : <Text style={styles.emptyText}>{query.trim() ? "Nenhum produto encontrado." : "Escreve para começar a pesquisa."}</Text>
-                    }
+                      ? products.map((product) => <ProductRow key={product.id} product={product} onPress={() => setSelectedProduct(product)} />)
+                      : <Text style={styles.emptyText}>{query.trim() ? t("addProduct.noProducts") : t("addProduct.typeToSearch")}</Text>}
                   </ScrollView>
                 </>
               )}
 
-              {/* ── SCAN ── */}
               {method === "scan" && !selectedCat && (
                 <View style={styles.scanArea}>
                   <View style={styles.scanFrame}>
@@ -381,8 +388,8 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
                     <View style={[styles.corner, styles.topRight]} />
                     <View style={[styles.corner, styles.bottomLeft]} />
                     <View style={[styles.corner, styles.bottomRight]} />
-                    <Text style={{ fontSize: 48 }}>📦</Text>
-                    <Text style={styles.scanHint}>{isScanning ? "A escanear..." : "Aponta para um código de barras"}</Text>
+                    <Text style={styles.scanBoxLabel}>PK</Text>
+                    <Text style={styles.scanHint}>{isScanning ? t("addProduct.scanning") : t("addProduct.scanHint")}</Text>
                   </View>
                   <TouchableOpacity
                     style={[styles.scanBtn, isScanning && { opacity: 0.7 }]}
@@ -391,49 +398,45 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
                     activeOpacity={0.85}
                   >
                     <ScanLine size={20} color="#fff" />
-                    <Text style={styles.scanBtnText}>{isScanning ? "A escanear..." : "Iniciar scan"}</Text>
+                    <Text style={styles.scanBtnText}>{isScanning ? t("addProduct.scanning") : t("addProduct.startScan")}</Text>
                   </TouchableOpacity>
                 </View>
               )}
 
-              {/* ── CATEGORY browse ── */}
               {method === "category" && (
                 <ScrollView style={styles.scroll} contentContainerStyle={styles.catScrollContent}>
-                  {/* Main categories grid */}
                   {!selectedCat && (
                     loadingCats
                       ? <ActivityIndicator color="#10B981" style={{ marginTop: 24 }} />
                       : (
                         <View style={styles.catGrid}>
                           {mainCats.map((cat) => (
-                            <CatCard key={cat.id} cat={cat} onPress={() => { setSelectedCat(cat); setSelectedSubCat(null); }} />
+                            <CategoryCard key={cat.id} cat={cat} onPress={() => { setSelectedCat(cat); setSelectedSubCat(null); }} />
                           ))}
                         </View>
                       )
                   )}
 
-                  {/* Subcategories grid */}
                   {selectedCat && !selectedSubCat && (
                     loadingCats
                       ? <ActivityIndicator color="#10B981" style={{ marginTop: 24 }} />
                       : subCats.length > 0
-                      ? (
-                        <View style={styles.catGrid}>
-                          {subCats.map((sub) => (
-                            <CatCard key={sub.id} cat={sub} onPress={() => setSelectedSubCat(sub)} />
-                          ))}
-                        </View>
-                      )
-                      : <Text style={styles.emptyText}>Sem subcategorias.</Text>
+                        ? (
+                          <View style={styles.catGrid}>
+                            {subCats.map((subCat) => (
+                              <CategoryCard key={subCat.id} cat={subCat} onPress={() => setSelectedSubCat(subCat)} />
+                            ))}
+                          </View>
+                        )
+                        : <Text style={styles.emptyText}>{t("addProduct.noSubcategories")}</Text>
                   )}
 
-                  {/* Products list */}
                   {selectedSubCat && (
                     loadingProducts
                       ? <ActivityIndicator color="#10B981" style={{ marginTop: 24 }} />
                       : products.length > 0
-                      ? products.map((p) => <ProductRow key={p.id} product={p} onPress={() => setSelectedProduct(p)} />)
-                      : <Text style={styles.emptyText}>Sem produtos nesta categoria.</Text>
+                        ? products.map((product) => <ProductRow key={product.id} product={product} onPress={() => setSelectedProduct(product)} />)
+                        : <Text style={styles.emptyText}>{t("addProduct.noCategoryProducts")}</Text>
                   )}
                 </ScrollView>
               )}
@@ -445,68 +448,63 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  overlay:          { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(17,24,39,0.4)" },
-  backdrop:         { ...StyleSheet.absoluteFillObject },
-  sheet:            { minHeight: "60%", maxHeight: "88%", backgroundColor: Colors.surface, borderTopLeftRadius: Radii["3xl"], borderTopRightRadius: Radii["3xl"], paddingHorizontal: 20, paddingTop: 12, paddingBottom: 32 },
-  handle:           { alignSelf: "center", width: 42, height: 4, borderRadius: 99, backgroundColor: Colors.gray200, marginBottom: 16 },
-  header:           { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 16 },
-  title:            { fontSize: Typography.xl, fontWeight: "700", color: Colors.gray900 },
-  addedBadge:       { fontSize: 12, fontWeight: "600", color: Colors.success500, marginTop: 2 },
-  iconBtn:          { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.gray50, alignItems: "center", justifyContent: "center" },
-  iconSpacer:       { width: 36, height: 36 },
-  searchBox:        { flexDirection: "row", alignItems: "center", gap: 10, height: 48, borderRadius: Radii["2xl"], backgroundColor: Colors.gray50, paddingHorizontal: 16, marginBottom: 16 },
-  searchInput:      { flex: 1, fontSize: Typography.base, color: Colors.gray900 },
-  scroll:           { flex: 1 },
-  scrollContent:    { gap: 10, paddingBottom: 8 },
+  overlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(17,24,39,0.4)" },
+  backdrop: { ...StyleSheet.absoluteFillObject },
+  sheet: { minHeight: "60%", maxHeight: "88%", backgroundColor: Colors.surface, borderTopLeftRadius: Radii["3xl"], borderTopRightRadius: Radii["3xl"], paddingHorizontal: 20, paddingTop: 12, paddingBottom: 32 },
+  handle: { alignSelf: "center", width: 42, height: 4, borderRadius: 99, backgroundColor: Colors.gray200, marginBottom: 16 },
+  header: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 16 },
+  title: { fontSize: Typography.xl, fontWeight: "700", color: Colors.gray900 },
+  addedBadge: { fontSize: 12, fontWeight: "600", color: Colors.success500, marginTop: 2 },
+  iconBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.gray50, alignItems: "center", justifyContent: "center" },
+  iconSpacer: { width: 36, height: 36 },
+  searchBox: { flexDirection: "row", alignItems: "center", gap: 10, height: 48, borderRadius: Radii["2xl"], backgroundColor: Colors.gray50, paddingHorizontal: 16, marginBottom: 16 },
+  searchInput: { flex: 1, fontSize: Typography.base, color: Colors.gray900 },
+  scroll: { flex: 1 },
+  scrollContent: { gap: 10, paddingBottom: 8 },
   catScrollContent: { paddingBottom: 8 },
-  emptyText:        { textAlign: "center", fontSize: Typography.base, color: Colors.gray500, paddingVertical: 24 },
-  sectionLabel:     { fontSize: 12, fontWeight: "600", color: Colors.gray500, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 12 },
-
-  // Product preview (store step)
-  productPreview:      { flexDirection: "row", alignItems: "center", gap: 14, backgroundColor: Colors.primary50, borderRadius: Radii["2xl"], padding: 14, marginBottom: 20 },
+  catGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
+  emptyText: { textAlign: "center", fontSize: Typography.base, color: Colors.gray500, paddingVertical: 24 },
+  sectionLabel: { fontSize: 12, fontWeight: "600", color: Colors.gray500, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 12 },
+  productPreview: { flexDirection: "row", alignItems: "center", gap: 14, backgroundColor: Colors.primary50, borderRadius: Radii["2xl"], padding: 14, marginBottom: 20 },
   productPreviewEmoji: { width: 52, height: 52, borderRadius: Radii.xl, backgroundColor: Colors.primary100, alignItems: "center", justifyContent: "center" },
-  productPreviewName:  { flex: 1, fontSize: 15, fontWeight: "700", color: Colors.gray900 },
-
-  // Store rows
-  storeRow:   { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: Radii["2xl"], backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.gray100, marginBottom: 10 },
-  storeIcon:  { width: 42, height: 42, borderRadius: Radii.lg, backgroundColor: Colors.primary50, alignItems: "center", justifyContent: "center" },
-  storeName:  { fontSize: Typography.md, fontWeight: "700", color: Colors.gray900 },
-  storeSub:   { fontSize: Typography.sm, color: Colors.gray500, marginTop: 2 },
+  previewBadge: { fontSize: 16, fontWeight: "800", color: Colors.gray900 },
+  productPreviewName: { flex: 1, fontSize: 15, fontWeight: "700", color: Colors.gray900 },
+  storeRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: Radii["2xl"], backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.gray100, marginBottom: 10 },
+  storeIcon: { width: 42, height: 42, borderRadius: Radii.lg, backgroundColor: Colors.primary50, alignItems: "center", justifyContent: "center" },
+  storeName: { fontSize: Typography.md, fontWeight: "700", color: Colors.gray900 },
+  storeSub: { fontSize: Typography.sm, color: Colors.gray500, marginTop: 2 },
   storePrice: { fontSize: Typography.lg, fontWeight: "800", color: Colors.success500 },
-
-  // Scan area
-  scanArea:   { flex: 1, alignItems: "center", justifyContent: "center", gap: 24, paddingVertical: 20 },
-  scanFrame:  { width: 220, height: 220, borderRadius: 20, backgroundColor: Colors.gray50, alignItems: "center", justifyContent: "center", position: "relative" },
-  scanHint:   { fontSize: 13, color: Colors.gray500, marginTop: 10, textAlign: "center" },
-  scanBtn:    { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 28, paddingVertical: 15, backgroundColor: Colors.primary600, borderRadius: Radii["2xl"] },
-  scanBtnText:{ fontSize: 15, fontWeight: "700", color: "#fff" },
-  corner:     { position: "absolute", width: 24, height: 24, borderColor: Colors.primary600 },
-  topLeft:    { top: 16, left: 16, borderTopWidth: 3, borderLeftWidth: 3, borderTopLeftRadius: 4 },
-  topRight:   { top: 16, right: 16, borderTopWidth: 3, borderRightWidth: 3, borderTopRightRadius: 4 },
+  scanArea: { flex: 1, alignItems: "center", justifyContent: "center", gap: 24, paddingVertical: 20 },
+  scanFrame: { width: 220, height: 220, borderRadius: 20, backgroundColor: Colors.gray50, alignItems: "center", justifyContent: "center", position: "relative" },
+  scanBoxLabel: { fontSize: 24, fontWeight: "800", color: Colors.gray700 },
+  scanHint: { fontSize: 13, color: Colors.gray500, marginTop: 10, textAlign: "center" },
+  scanBtn: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 28, paddingVertical: 15, backgroundColor: Colors.primary600, borderRadius: Radii["2xl"] },
+  scanBtnText: { fontSize: 15, fontWeight: "700", color: "#fff" },
+  corner: { position: "absolute", width: 24, height: 24, borderColor: Colors.primary600 },
+  topLeft: { top: 16, left: 16, borderTopWidth: 3, borderLeftWidth: 3, borderTopLeftRadius: 4 },
+  topRight: { top: 16, right: 16, borderTopWidth: 3, borderRightWidth: 3, borderTopRightRadius: 4 },
   bottomLeft: { bottom: 16, left: 16, borderBottomWidth: 3, borderLeftWidth: 3, borderBottomLeftRadius: 4 },
-  bottomRight:{ bottom: 16, right: 16, borderBottomWidth: 3, borderRightWidth: 3, borderBottomRightRadius: 4 },
+  bottomRight: { bottom: 16, right: 16, borderBottomWidth: 3, borderRightWidth: 3, borderBottomRightRadius: 4 },
 });
 
-// ─── Method toggle styles ─────────────────────────────────────────────────────
-const mStyles = StyleSheet.create({
-  row:      { flexDirection: "row", gap: 8, marginBottom: 16 },
-  tab:      { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: Radii.xl, backgroundColor: Colors.gray100 },
+const methodStyles = StyleSheet.create({
+  row: { flexDirection: "row", gap: 8, marginBottom: 16 },
+  tab: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: Radii.xl, backgroundColor: Colors.gray100 },
   tabLabel: { fontSize: 13, fontWeight: "600", color: Colors.gray500 },
 });
 
-// ─── Product row styles ───────────────────────────────────────────────────────
-const pStyles = StyleSheet.create({
-  row:   { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: Radii["2xl"], backgroundColor: Colors.gray50 },
+const productStyles = StyleSheet.create({
+  row: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: Radii["2xl"], backgroundColor: Colors.gray50 },
   emoji: { width: 42, height: 42, borderRadius: Radii.lg, backgroundColor: Colors.primary50, alignItems: "center", justifyContent: "center" },
-  name:  { fontSize: Typography.md, fontWeight: "700", color: Colors.gray900 },
-  sub:   { fontSize: Typography.sm, color: Colors.gray500, marginTop: 2 },
+  fallbackBadge: { fontSize: 12, fontWeight: "800", color: Colors.gray900 },
+  name: { fontSize: Typography.md, fontWeight: "700", color: Colors.gray900 },
+  sub: { fontSize: Typography.sm, color: Colors.gray500, marginTop: 2 },
 });
 
-// ─── Category grid styles ─────────────────────────────────────────────────────
-const catStyles = StyleSheet.create({
-  card:  { width: "31%", aspectRatio: 1, margin: "1%", backgroundColor: Colors.gray50, borderRadius: Radii.xl, alignItems: "center", justifyContent: "center", gap: 6 },
-  icon:  { width: 56, height: 56, borderRadius: Radii.lg, backgroundColor: Colors.surface, alignItems: "center", justifyContent: "center" },
+const categoryStyles = StyleSheet.create({
+  card: { width: "31%", aspectRatio: 1, margin: "1%", backgroundColor: Colors.gray50, borderRadius: Radii.xl, alignItems: "center", justifyContent: "center", gap: 6 },
+  icon: { width: 56, height: 56, borderRadius: Radii.lg, backgroundColor: Colors.surface, alignItems: "center", justifyContent: "center" },
+  fallbackBadge: { fontSize: 12, fontWeight: "800", color: Colors.gray900 },
   label: { fontSize: 11, fontWeight: "600", color: Colors.gray900, textAlign: "center" },
 });

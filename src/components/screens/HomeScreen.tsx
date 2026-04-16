@@ -5,20 +5,56 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Colors } from "../../styles/colors";
 import { Radii, Typography } from "../../styles/typography";
 import { useAuth } from "../../auth/AuthProvider";
+import { useTranslation } from "react-i18next";
+import { formatCurrency } from "../../i18n/formatters";
 
-const listItems = [
-  { id: 1, name: "Organic Apples", qty: "1 kg",   price: "€2.49", store: "FreshMart",  checked: false, color: Colors.greenCard,  emoji: "🍎" },
-  { id: 2, name: "Whole Milk 2L",  qty: "2 pcs",  price: "€3.20", store: "CostPlus",   checked: true,  color: Colors.blueCard,   emoji: "🥛" },
-  { id: 3, name: "Sourdough Bread",qty: "1 loaf", price: "€4.50", store: "BakeryHub",  checked: false, color: Colors.orangeCard, emoji: "🍞" },
+type ListPreviewItem = {
+  id: number;
+  name: string;
+  qty: string;
+  price: number;
+  store: string;
+  checked: boolean;
+  color: string;
+  badge: string;
+};
+
+type DealItem = {
+  id: number;
+  name: string;
+  discount: number;
+  price: number;
+  original: number;
+  store: string;
+  distanceKm: number;
+  color: string;
+  badge: string;
+};
+
+type AlertItem = {
+  id: number;
+  name: string;
+  drop: number;
+  from: number;
+  to: number;
+  store: string;
+};
+
+const listItems: ListPreviewItem[] = [
+  { id: 1, name: "Organic Apples", qty: "1 kg", price: 2.49, store: "FreshMart", checked: false, color: Colors.greenCard, badge: "AP" },
+  { id: 2, name: "Whole Milk 2L", qty: "2 pcs", price: 3.2, store: "CostPlus", checked: true, color: Colors.blueCard, badge: "ML" },
+  { id: 3, name: "Sourdough Bread", qty: "1 loaf", price: 4.5, store: "BakeryHub", checked: false, color: Colors.orangeCard, badge: "BR" },
 ];
-const deals = [
-  { id: 1, name: "Greek Yogurt",    discount: "30% off", price: "€1.89", original: "€2.69", store: "FreshMart",  dist: "0.3 km", color: Colors.purpleCard, emoji: "🥣" },
-  { id: 2, name: "Free-Range Eggs", discount: "20% off", price: "€3.99", original: "€4.99", store: "NatureMart", dist: "0.7 km", color: Colors.greenCard,  emoji: "🥚" },
-  { id: 3, name: "Pasta Pack x5",   discount: "15% off", price: "€2.50", original: "€2.95", store: "CostPlus",   dist: "1.1 km", color: Colors.orangeCard, emoji: "🍝" },
+
+const deals: DealItem[] = [
+  { id: 1, name: "Greek Yogurt", discount: 30, price: 1.89, original: 2.69, store: "FreshMart", distanceKm: 0.3, color: Colors.purpleCard, badge: "YG" },
+  { id: 2, name: "Free-Range Eggs", discount: 20, price: 3.99, original: 4.99, store: "NatureMart", distanceKm: 0.7, color: Colors.greenCard, badge: "EG" },
+  { id: 3, name: "Pasta Pack x5", discount: 15, price: 2.5, original: 2.95, store: "CostPlus", distanceKm: 1.1, color: Colors.orangeCard, badge: "PA" },
 ];
-const alerts = [
-  { id: 1, name: "Salmon Fillet", drop: "↓ 22%", from: "€12.99", to: "€10.10", store: "FreshMart" },
-  { id: 2, name: "Almond Milk",   drop: "↓ 15%", from: "€3.49",  to: "€2.99",  store: "NatureMart" },
+
+const alerts: AlertItem[] = [
+  { id: 1, name: "Salmon Fillet", drop: 22, from: 12.99, to: 10.1, store: "FreshMart" },
+  { id: 2, name: "Almond Milk", drop: 15, from: 3.49, to: 2.99, store: "NatureMart" },
 ];
 
 interface HomeScreenProps {
@@ -28,30 +64,32 @@ interface HomeScreenProps {
 export function HomeScreen({ onNavigate }: HomeScreenProps) {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { t, i18n } = useTranslation();
   const [quickAdd, setQuickAdd] = useState("");
-  const [checkedItems, setCheckedItems] = useState<Set<number>>(new Set([2]));
+  const [checkedItems, setCheckedItems] = useState<Set<number>>(new Set(listItems.filter((item) => item.checked).map((item) => item.id)));
 
-  const displayName = user?.name ?? user?.username ?? "Utilizador";
+  const displayName = user?.name ?? user?.username ?? t("common.user");
   const initials = displayName
     .split(" ")
     .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase() ?? "")
+    .map((word) => word[0]?.toUpperCase() ?? "")
     .join("");
 
   const toggleItem = (id: number) => {
-    setCheckedItems(prev => {
+    setCheckedItems((prev) => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
   };
 
+  const savedAmount = formatCurrency(4.8, i18n.language);
+
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header */}
+    <View style={[styles.container, { paddingTop: insets.top }]}> 
       <View style={styles.header}>
         <View>
-          <Text style={styles.greeting}>Good morning 👋</Text>
+          <Text style={styles.greeting}>{t("home.greeting")}</Text>
           <Text style={styles.name}>{displayName}</Text>
         </View>
         <View style={styles.headerRight}>
@@ -65,14 +103,13 @@ export function HomeScreen({ onNavigate }: HomeScreenProps) {
         </View>
       </View>
 
-      {/* Quick add */}
       <View style={styles.quickAddRow}>
         <View style={styles.searchBox}>
           <Search size={16} color={Colors.gray400} />
           <TextInput
             value={quickAdd}
             onChangeText={setQuickAdd}
-            placeholder="Quick add to list..."
+            placeholder={t("home.quickAddPlaceholder")}
             placeholderTextColor={Colors.gray400}
             style={styles.searchInput}
           />
@@ -83,15 +120,14 @@ export function HomeScreen({ onNavigate }: HomeScreenProps) {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
-        {/* Summary stats */}
         <View style={styles.statsRow}>
           {[
-            { label: "Items", value: "12", Icon: ShoppingBag, color: Colors.primary600, bg: Colors.purpleCard },
-            { label: "Saved", value: "€4.80", Icon: TrendingDown, color: Colors.success500, bg: Colors.greenCard },
-            { label: "Alerts", value: "3",  Icon: Zap,          color: Colors.warning500, bg: Colors.warning50 },
+            { label: t("home.items"), value: "12", Icon: ShoppingBag, color: Colors.primary600, bg: Colors.purpleCard },
+            { label: t("home.saved"), value: savedAmount, Icon: TrendingDown, color: Colors.success500, bg: Colors.greenCard },
+            { label: t("home.alerts"), value: "3", Icon: Zap, color: Colors.warning500, bg: Colors.warning50 },
           ].map(({ label, value, Icon, color, bg }) => (
-            <View key={label} style={[styles.statCard, { backgroundColor: bg }]}>
-              <View style={[styles.statIcon, { backgroundColor: color + "22" }]}>
+            <View key={label} style={[styles.statCard, { backgroundColor: bg }]}> 
+              <View style={[styles.statIcon, { backgroundColor: `${color}22` }]}> 
                 <Icon size={16} color={color} strokeWidth={2} />
               </View>
               <Text style={styles.statValue}>{value}</Text>
@@ -100,78 +136,75 @@ export function HomeScreen({ onNavigate }: HomeScreenProps) {
           ))}
         </View>
 
-        {/* Shopping list preview */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>My List</Text>
+            <Text style={styles.sectionTitle}>{t("home.myList")}</Text>
             <TouchableOpacity onPress={() => onNavigate("lists")} style={styles.seeAll}>
-              <Text style={styles.seeAllText}>See all</Text>
+              <Text style={styles.seeAllText}>{t("home.seeAll")}</Text>
               <ChevronRight size={16} color={Colors.primary600} />
             </TouchableOpacity>
           </View>
           <View style={styles.card}>
             {listItems.map((item, idx) => (
               <View key={item.id} style={[styles.listRow, idx < listItems.length - 1 && styles.listRowBorder]}>
-                <View style={[styles.emoji, { backgroundColor: item.color }]}>
-                  <Text style={{ fontSize: 18 }}>{item.emoji}</Text>
+                <View style={[styles.emoji, { backgroundColor: item.color }]}> 
+                  <Text style={styles.emojiText}>{item.badge}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.itemName, checkedItems.has(item.id) && styles.itemNameChecked]}>{item.name}</Text>
-                  <Text style={styles.itemSub}>{item.qty} · {item.store}</Text>
+                  <Text style={styles.itemSub}>{item.qty} | {item.store}</Text>
                 </View>
-                <Text style={styles.itemPrice}>{item.price}</Text>
+                <Text style={styles.itemPrice}>{formatCurrency(item.price, i18n.language)}</Text>
                 <TouchableOpacity
                   onPress={() => toggleItem(item.id)}
                   style={[styles.checkbox, checkedItems.has(item.id) && styles.checkboxChecked]}
                 >
-                  {checkedItems.has(item.id) && <Text style={{ color: "#fff", fontSize: 10 }}>✓</Text>}
+                  {checkedItems.has(item.id) && <Text style={styles.checkboxText}>OK</Text>}
                 </TouchableOpacity>
               </View>
             ))}
           </View>
         </View>
 
-        {/* Nearby deals */}
         <View style={{ marginBottom: 16 }}>
-          <View style={[styles.sectionHeader, { paddingHorizontal: 20 }]}>
-            <Text style={styles.sectionTitle}>Nearby Deals</Text>
+          <View style={[styles.sectionHeader, { paddingHorizontal: 20 }]}> 
+            <Text style={styles.sectionTitle}>{t("home.nearbyDeals")}</Text>
             <TouchableOpacity onPress={() => onNavigate("prices")} style={styles.seeAll}>
-              <Text style={styles.seeAllText}>See all</Text>
+              <Text style={styles.seeAllText}>{t("home.seeAll")}</Text>
               <ChevronRight size={16} color={Colors.primary600} />
             </TouchableOpacity>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20, gap: 12 }}>
-            {deals.map(deal => (
+            {deals.map((deal) => (
               <TouchableOpacity key={deal.id} style={[styles.dealCard, { backgroundColor: deal.color }]} onPress={() => onNavigate("prices")} activeOpacity={0.85}>
-                <Text style={{ fontSize: 36, marginBottom: 6 }}>{deal.emoji}</Text>
+                <Text style={styles.dealBadgeCode}>{deal.badge}</Text>
                 <Text style={styles.dealName}>{deal.name}</Text>
-                <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4, marginTop: 2 }}>
-                  <Text style={styles.dealPrice}>{deal.price}</Text>
-                  <Text style={styles.dealOriginal}>{deal.original}</Text>
+                <View style={styles.priceRow}>
+                  <Text style={styles.dealPrice}>{formatCurrency(deal.price, i18n.language)}</Text>
+                  <Text style={styles.dealOriginal}>{formatCurrency(deal.original, i18n.language)}</Text>
                 </View>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 2, marginTop: 6 }}>
+                <View style={styles.distanceRow}>
                   <MapPin size={10} color={Colors.gray400} />
-                  <Text style={styles.dealDist}>{deal.dist}</Text>
+                  <Text style={styles.dealDist}>{t("home.distanceKm", { value: deal.distanceKm.toFixed(1) })}</Text>
                 </View>
                 <View style={styles.dealBadge}>
-                  <Text style={styles.dealBadgeText}>{deal.discount}</Text>
+                  <Text style={styles.dealBadgeText}>{t("home.discountOff", { value: deal.discount })}</Text>
                 </View>
               </TouchableOpacity>
             ))}
           </ScrollView>
         </View>
 
-        {/* Active alerts */}
-        <View style={[styles.section, { paddingBottom: 24 }]}>
+        <View style={[styles.section, { paddingBottom: 24 }]}> 
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Active Alerts</Text>
+            <Text style={styles.sectionTitle}>{t("home.activeAlerts")}</Text>
             <TouchableOpacity onPress={() => onNavigate("alerts")} style={styles.seeAll}>
-              <Text style={styles.seeAllText}>See all</Text>
+              <Text style={styles.seeAllText}>{t("home.seeAll")}</Text>
               <ChevronRight size={16} color={Colors.primary600} />
             </TouchableOpacity>
           </View>
           <View style={{ gap: 10 }}>
-            {alerts.map(alert => (
+            {alerts.map((alert) => (
               <View key={alert.id} style={styles.alertRow}>
                 <View style={styles.alertIcon}>
                   <TrendingDown size={16} color={Colors.success500} />
@@ -181,10 +214,10 @@ export function HomeScreen({ onNavigate }: HomeScreenProps) {
                   <Text style={styles.alertStore}>{alert.store}</Text>
                 </View>
                 <View style={{ alignItems: "flex-end" }}>
-                  <Text style={styles.alertDrop}>{alert.drop}</Text>
-                  <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4 }}>
-                    <Text style={styles.alertTo}>{alert.to}</Text>
-                    <Text style={styles.alertFrom}>{alert.from}</Text>
+                  <Text style={styles.alertDrop}>{t("home.priceDrop", { value: alert.drop })}</Text>
+                  <View style={styles.priceRow}>
+                    <Text style={styles.alertTo}>{formatCurrency(alert.to, i18n.language)}</Text>
+                    <Text style={styles.alertFrom}>{formatCurrency(alert.from, i18n.language)}</Text>
                   </View>
                 </View>
               </View>
@@ -224,16 +257,21 @@ const styles = StyleSheet.create({
   listRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 14 },
   listRowBorder: { borderBottomWidth: 1, borderBottomColor: Colors.gray100 },
   emoji: { width: 40, height: 40, borderRadius: Radii.lg, alignItems: "center", justifyContent: "center" },
+  emojiText: { fontSize: 13, fontWeight: "700", color: Colors.gray900 },
   itemName: { fontSize: 14, fontWeight: "600", color: Colors.gray900 },
   itemNameChecked: { textDecorationLine: "line-through", color: Colors.gray400 },
   itemSub: { fontSize: 12, color: Colors.gray400 },
   itemPrice: { fontSize: 14, fontWeight: "700", color: Colors.success500 },
   checkbox: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: Colors.gray300, alignItems: "center", justifyContent: "center" },
   checkboxChecked: { borderColor: Colors.success500, backgroundColor: Colors.success500 },
+  checkboxText: { color: "#fff", fontSize: 8, fontWeight: "700" },
   dealCard: { width: 176, borderRadius: Radii["3xl"], padding: 16, flexShrink: 0, position: "relative", overflow: "hidden" },
+  dealBadgeCode: { fontSize: 18, fontWeight: "800", color: Colors.gray900, marginBottom: 6 },
   dealName: { fontSize: 13, fontWeight: "700", color: Colors.gray900 },
+  priceRow: { flexDirection: "row", alignItems: "baseline", gap: 4, marginTop: 2 },
   dealPrice: { fontSize: 16, fontWeight: "800", color: Colors.success500 },
   dealOriginal: { fontSize: 11, color: Colors.gray400, textDecorationLine: "line-through" },
+  distanceRow: { flexDirection: "row", alignItems: "center", gap: 2, marginTop: 6 },
   dealDist: { fontSize: 11, color: Colors.gray400 },
   dealBadge: { position: "absolute", top: 12, right: 12, backgroundColor: Colors.success500, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 99 },
   dealBadgeText: { fontSize: 10, fontWeight: "700", color: "#fff" },

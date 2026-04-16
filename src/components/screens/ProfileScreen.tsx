@@ -11,6 +11,8 @@ import { Bell, LogOut, MapPin, Moon, Shield, Store, User as UserIcon } from "luc
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Colors } from "../../styles/colors";
 import { Radii, Typography } from "../../styles/typography";
+import { useTranslation } from "react-i18next";
+import { useLanguage } from "../../i18n/LanguageProvider";
 
 interface ProfileScreenProps {
   onLogout: () => void;
@@ -29,13 +31,15 @@ const preferredStores = [
 
 export function ProfileScreen({ onLogout, user }: ProfileScreenProps) {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
+  const { language, setLanguage } = useLanguage();
   const [priceAlerts, setPriceAlerts] = useState(true);
   const [dealNotifications, setDealNotifications] = useState(true);
   const [locationEnabled, setLocationEnabled] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
 
-  const displayName = user?.name || user?.username || "Utilizador";
-  const displayEmail = user?.email || "Sem email";
+  const displayName = user?.name || user?.username || t("common.user");
+  const displayEmail = user?.email || t("common.noEmail");
   const initials = displayName
     .split(" ")
     .filter(Boolean)
@@ -46,7 +50,7 @@ export function ProfileScreen({ onLogout, user }: ProfileScreenProps) {
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingTop: insets.top, paddingBottom: 28 }}>
       <View style={styles.header}>
-        <Text style={styles.title}>Profile</Text>
+        <Text style={styles.title}>{t("profile.title")}</Text>
         <View style={styles.userCard}>
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>{initials || "U"}</Text>
@@ -64,9 +68,9 @@ export function ProfileScreen({ onLogout, user }: ProfileScreenProps) {
       <View style={styles.content}>
         <View style={styles.statsRow}>
           {[
-            { label: "Lists", value: "8" },
-            { label: "Saved", value: "€142" },
-            { label: "Scans", value: "34" },
+            { label: t("profile.statsLists"), value: "8" },
+            { label: t("profile.statsSaved"), value: "�142" },
+            { label: t("profile.statsScans"), value: "34" },
           ].map((stat) => (
             <View key={stat.label} style={styles.statCard}>
               <Text style={styles.statValue}>{stat.value}</Text>
@@ -78,7 +82,7 @@ export function ProfileScreen({ onLogout, user }: ProfileScreenProps) {
         <View style={styles.sectionCard}>
           <View style={styles.sectionTitleRow}>
             <Store size={16} color={Colors.primary600} />
-            <Text style={styles.sectionTitle}>Preferred Stores</Text>
+            <Text style={styles.sectionTitle}>{t("profile.preferredStores")}</Text>
           </View>
           {preferredStores.map((store) => (
             <View key={store.name} style={styles.storeRow}>
@@ -86,7 +90,7 @@ export function ProfileScreen({ onLogout, user }: ProfileScreenProps) {
                 <Text style={styles.settingLabel}>{store.name}</Text>
                 <Text style={styles.settingHint}>{store.distance}</Text>
               </View>
-              <Text style={styles.storeActive}>Ativa</Text>
+              <Text style={styles.storeActive}>{t("profile.active")}</Text>
             </View>
           ))}
         </View>
@@ -94,17 +98,17 @@ export function ProfileScreen({ onLogout, user }: ProfileScreenProps) {
         <View style={styles.sectionCard}>
           <View style={styles.sectionTitleRow}>
             <Bell size={16} color={Colors.primary600} />
-            <Text style={styles.sectionTitle}>Notifications</Text>
+            <Text style={styles.sectionTitle}>{t("profile.notifications")}</Text>
           </View>
           <SettingRow
-            label="Price alerts"
-            hint="Receber avisos quando os preços descem"
+            label={t("profile.priceAlerts")}
+            hint={t("profile.priceAlertsHint")}
             value={priceAlerts}
             onValueChange={setPriceAlerts}
           />
           <SettingRow
-            label="Deal notifications"
-            hint="Resumo de promoções das lojas"
+            label={t("profile.deals")}
+            hint={t("profile.dealsHint")}
             value={dealNotifications}
             onValueChange={setDealNotifications}
           />
@@ -113,36 +117,60 @@ export function ProfileScreen({ onLogout, user }: ProfileScreenProps) {
         <View style={styles.sectionCard}>
           <View style={styles.sectionTitleRow}>
             <MapPin size={16} color={Colors.primary600} />
-            <Text style={styles.sectionTitle}>Privacy & Location</Text>
+            <Text style={styles.sectionTitle}>{t("profile.privacy")}</Text>
           </View>
           <SettingRow
-            label="Location services"
-            hint="Encontrar preços nas lojas mais próximas"
+            label={t("profile.locationServices")}
+            hint={t("profile.locationServicesHint")}
             value={locationEnabled}
             onValueChange={setLocationEnabled}
           />
           <SettingRow
-            label="Dark mode"
-            hint="Preparado para ativar tema escuro"
+            label={t("profile.darkMode")}
+            hint={t("profile.darkModeHint")}
             value={darkMode}
             onValueChange={setDarkMode}
           />
         </View>
 
         <View style={styles.sectionCard}>
+          <View style={styles.sectionTitleRow}>
+            <UserIcon size={16} color={Colors.primary600} />
+            <Text style={styles.sectionTitle}>{t("profile.language")}</Text>
+          </View>
+          <Text style={styles.settingHint}>{t("profile.languageHint")}</Text>
+          <View style={styles.languageRow}>
+            <TouchableOpacity
+              style={[styles.languageButton, language === "pt" && styles.languageButtonActive]}
+              onPress={() => void setLanguage("pt")}
+              activeOpacity={0.85}
+            >
+              <Text style={[styles.languageButtonText, language === "pt" && styles.languageButtonTextActive]}>{t("profile.portuguese")}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.languageButton, language === "en" && styles.languageButtonActive]}
+              onPress={() => void setLanguage("en")}
+              activeOpacity={0.85}
+            >
+              <Text style={[styles.languageButtonText, language === "en" && styles.languageButtonTextActive]}>{t("profile.english")}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={styles.sectionCard}>
           <View style={styles.simpleRow}>
             <Shield size={16} color={Colors.gray600} />
-            <Text style={styles.settingLabel}>Privacy Policy</Text>
+            <Text style={styles.settingLabel}>{t("profile.privacyPolicy")}</Text>
           </View>
           <View style={styles.simpleRow}>
             <Moon size={16} color={Colors.gray600} />
-            <Text style={styles.settingLabel}>Appearance preferences</Text>
+            <Text style={styles.settingLabel}>{t("profile.appearance")}</Text>
           </View>
         </View>
 
         <TouchableOpacity style={styles.logoutButton} onPress={onLogout} activeOpacity={0.85}>
           <LogOut size={16} color={Colors.error500} />
-          <Text style={styles.logoutText}>Sign out</Text>
+          <Text style={styles.logoutText}>{t("profile.signOut")}</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>
@@ -231,6 +259,11 @@ const styles = StyleSheet.create({
   settingRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   settingLabel: { fontSize: Typography.base, fontWeight: "600", color: Colors.gray900 },
   settingHint: { fontSize: Typography.sm, color: Colors.gray500, marginTop: 3 },
+  languageRow: { flexDirection: "row", gap: 10 },
+  languageButton: { flex: 1, borderRadius: Radii.xl, borderWidth: 1, borderColor: Colors.gray200, paddingVertical: 12, alignItems: "center" },
+  languageButtonActive: { backgroundColor: Colors.primary600, borderColor: Colors.primary600 },
+  languageButtonText: { fontSize: Typography.sm, fontWeight: "700", color: Colors.gray700 },
+  languageButtonTextActive: { color: Colors.surface },
   simpleRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   logoutButton: {
     height: 50,

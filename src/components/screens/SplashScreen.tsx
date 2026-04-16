@@ -2,12 +2,14 @@ import { useEffect } from "react";
 import { View, Text, StyleSheet, Animated } from "react-native";
 import { ShoppingCart, Sparkles } from "lucide-react-native";
 import { Colors } from "../../styles/colors";
+import { useTranslation } from "react-i18next";
 
 interface SplashScreenProps {
   onComplete: () => void;
 }
 
 export function SplashScreen({ onComplete }: SplashScreenProps) {
+  const { t } = useTranslation();
   const logoScale = new Animated.Value(0.7);
   const logoOpacity = new Animated.Value(0);
   const dotsOpacity = new Animated.Value(0);
@@ -49,7 +51,7 @@ export function SplashScreen({ onComplete }: SplashScreenProps) {
           <Text style={styles.title}>Shopisel</Text>
           <View style={styles.tagline}>
             <Sparkles size={14} color="#C7D2FE" />
-            <Text style={styles.taglineText}>Shop smarter, save more</Text>
+            <Text style={styles.taglineText}>{t("splash.tagline")}</Text>
             <Sparkles size={14} color="#C7D2FE" />
           </View>
         </View>

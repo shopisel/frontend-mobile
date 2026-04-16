@@ -6,6 +6,7 @@ import {
 import { MapPin, List, Bell, ChevronRight } from "lucide-react-native";
 import { Colors } from "../../styles/colors";
 import { Radii, Typography } from "../../styles/typography";
+import { useTranslation } from "react-i18next";
 
 const slides = [
   {
@@ -36,8 +37,14 @@ interface OnboardingScreenProps {
 }
 
 export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
+  const { t } = useTranslation();
   const [current, setCurrent] = useState(0);
-  const slide = slides[current];
+  const localizedSlides = [
+    { ...slides[0], title: t("onboarding.slide1Title"), subtitle: t("onboarding.slide1Subtitle") },
+    { ...slides[1], title: t("onboarding.slide2Title"), subtitle: t("onboarding.slide2Subtitle") },
+    { ...slides[2], title: t("onboarding.slide3Title"), subtitle: t("onboarding.slide3Subtitle") },
+  ];
+  const slide = localizedSlides[current];
   const Icon = slide.icon;
 
   const goNext = () => {
@@ -54,9 +61,9 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
       <View style={styles.imageWrap}>
         <Image source={{ uri: slide.image }} style={styles.image} resizeMode="cover" />
         <View style={styles.imageOverlay} />
-        {current < slides.length - 1 && (
+        {current < localizedSlides.length - 1 && (
           <TouchableOpacity style={styles.skipBtn} onPress={onComplete} activeOpacity={0.8}>
-            <Text style={styles.skipText}>Skip</Text>
+            <Text style={styles.skipText}>{t("onboarding.skip")}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -73,7 +80,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
 
         {/* Dots */}
         <View style={styles.dots}>
-          {slides.map((_, i) => (
+          {localizedSlides.map((_, i) => (
             <TouchableOpacity
               key={i}
               onPress={() => setCurrent(i)}
@@ -95,7 +102,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
           activeOpacity={0.85}
         >
           <Text style={styles.ctaText}>
-            {current === slides.length - 1 ? "Get Started" : "Continue"}
+            {current === localizedSlides.length - 1 ? t("onboarding.getStarted") : t("onboarding.continue")}
           </Text>
           <ChevronRight size={20} color="#fff" />
         </TouchableOpacity>

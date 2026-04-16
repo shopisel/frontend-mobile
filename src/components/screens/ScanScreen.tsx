@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Camera, Flashlight, Image as ImageIcon, X } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTranslation } from "react-i18next";
 import { Colors } from "../../styles/colors";
 import { Radii, Typography } from "../../styles/typography";
+import { formatCurrency } from "../../i18n/formatters";
 
 interface ScanScreenProps {
   onNavigate?: (route: string) => void;
@@ -14,7 +16,7 @@ const scannedProduct = {
   brand: "Oatly",
   bestPrice: 3.29,
   bestStore: "NatureMart",
-  emoji: "🥛",
+  emoji: "??",
   stores: [
     { name: "NatureMart", price: 3.29 },
     { name: "FreshMart", price: 3.79 },
@@ -24,6 +26,7 @@ const scannedProduct = {
 
 export function ScanScreen({ onNavigate }: ScanScreenProps) {
   const insets = useSafeAreaInsets();
+  const { t, i18n } = useTranslation();
   const [torchOn, setTorchOn] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState(false);
@@ -53,8 +56,8 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <View>
-          <Text style={styles.title}>Scan product</Text>
-          <Text style={styles.subtitle}>Aponta para um código de barras ou QR code</Text>
+          <Text style={styles.title}>{t("scanScreen.title")}</Text>
+          <Text style={styles.subtitle}>{t("scanScreen.subtitle")}</Text>
         </View>
         <TouchableOpacity
           style={[styles.roundButton, torchOn && styles.roundButtonActive]}
@@ -70,9 +73,9 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
           <View style={[styles.corner, styles.topRight]} />
           <View style={[styles.corner, styles.bottomLeft]} />
           <View style={[styles.corner, styles.bottomRight]} />
-          <Text style={styles.previewEmoji}>{scanned ? scannedProduct.emoji : "📦"}</Text>
+          <Text style={styles.previewEmoji}>{scanned ? scannedProduct.emoji : "??"}</Text>
           <Text style={styles.previewText}>
-            {scanning ? "A procurar produto..." : scanned ? "Produto identificado" : "Pronto para digitalizar"}
+            {scanning ? t("scanScreen.looking") : scanned ? t("scanScreen.identified") : t("scanScreen.ready")}
           </Text>
         </View>
       </View>
@@ -86,12 +89,12 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
               activeOpacity={0.85}
             >
               <Camera size={18} color={Colors.surface} />
-              <Text style={styles.primaryButtonText}>{scanning ? "Scanning..." : "Scan barcode"}</Text>
+              <Text style={styles.primaryButtonText}>{scanning ? t("addProduct.scanning") : t("scanScreen.scanBarcode")}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.secondaryButton} activeOpacity={0.85}>
               <ImageIcon size={18} color={Colors.gray600} />
-              <Text style={styles.secondaryButtonText}>Escolher da galeria</Text>
+              <Text style={styles.secondaryButtonText}>{t("scanScreen.chooseGallery")}</Text>
             </TouchableOpacity>
           </>
         ) : (
@@ -110,8 +113,8 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
             </View>
 
             <View style={styles.highlight}>
-              <Text style={styles.highlightLabel}>Melhor preço</Text>
-              <Text style={styles.highlightPrice}>€{scannedProduct.bestPrice.toFixed(2)}</Text>
+              <Text style={styles.highlightLabel}>{t("scanScreen.bestPrice")}</Text>
+              <Text style={styles.highlightPrice}>{formatCurrency(scannedProduct.bestPrice, i18n.language)}</Text>
               <Text style={styles.highlightStore}>{scannedProduct.bestStore}</Text>
             </View>
 
@@ -119,21 +122,21 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
               {scannedProduct.stores.map((store) => (
                 <View key={store.name} style={styles.storeRow}>
                   <Text style={styles.storeName}>{store.name}</Text>
-                  <Text style={styles.storePrice}>€{store.price.toFixed(2)}</Text>
+                  <Text style={styles.storePrice}>{formatCurrency(store.price, i18n.language)}</Text>
                 </View>
               ))}
             </View>
 
             <View style={styles.resultActions}>
               <TouchableOpacity style={styles.primarySplitButton} onPress={handleAddToList} activeOpacity={0.85}>
-                <Text style={styles.primaryButtonText}>{added ? "Added!" : "Add to list"}</Text>
+                <Text style={styles.primaryButtonText}>{added ? t("scanScreen.added") : t("scanScreen.addToList")}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.secondarySplitButton}
                 onPress={() => onNavigate?.("prices")}
                 activeOpacity={0.85}
               >
-                <Text style={styles.secondaryActionText}>Compare</Text>
+                <Text style={styles.secondaryActionText}>{t("scanScreen.compare")}</Text>
               </TouchableOpacity>
             </View>
           </View>

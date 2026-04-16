@@ -1,6 +1,7 @@
 import { useAuth } from "../auth/AuthProvider";
 import { useCallback } from "react";
 import Constants from "expo-constants";
+import { i18n } from "../i18n";
 
 const extra = (Constants.expoConfig?.extra ?? {}) as Record<string, string | undefined>;
 const API_BASE_URL = extra.API_BASE_URL ?? process.env.EXPO_PUBLIC_API_BASE_URL ?? "";
@@ -10,9 +11,7 @@ export function useApi() {
 
   const fetchWithAuth = useCallback(async (endpoint: string, options: RequestInit = {}) => {
     if (!API_BASE_URL) {
-      throw new Error(
-        "API nao configurada. Define EXPO_PUBLIC_API_BASE_URL no frontend-mobile/.env com a URL da gateway ou da API."
-      );
+      throw new Error(i18n.t("errors.apiNotConfigured"));
     }
 
     const token = await getAccessToken();
@@ -48,7 +47,7 @@ export function useApi() {
           : (parsedError as { message?: string; error?: string } | null)?.message
             ?? (parsedError as { message?: string; error?: string } | null)?.error
             ?? response.statusText
-            ?? "Request failed";
+            ?? i18n.t("errors.requestFailed");
 
       console.error("[useApi] Request failed", {
         url,

@@ -4,6 +4,7 @@ import {
 import { Lock, ShieldCheck, ShoppingCart } from "lucide-react-native";
 import { Colors } from "../../styles/colors";
 import { Radii, Typography } from "../../styles/typography";
+import { useTranslation } from "react-i18next";
 
 interface AuthScreenProps {
   onLogin: () => void;
@@ -13,31 +14,29 @@ interface AuthScreenProps {
 }
 
 export function AuthScreen({ onLogin, onRegister, loading, configError }: AuthScreenProps) {
+  const { t } = useTranslation();
+
   return (
     <View style={styles.container}>
-      {/* Top */}
       <View style={styles.top}>
         <View style={styles.iconBox}>
           <ShoppingCart size={32} color="#fff" strokeWidth={1.8} />
         </View>
-        <Text style={styles.title}>Entrar com Keycloak</Text>
-        <Text style={styles.subtitle}>
-          A autenticação é feita no teu servidor de identidade com Authorization Code + PKCE.
-        </Text>
+        <Text style={styles.title}>{t("auth.title")}</Text>
+        <Text style={styles.subtitle}>{t("auth.subtitle")}</Text>
       </View>
 
-      {/* Info card */}
       <View style={styles.infoCard}>
         {[
           {
             Icon: ShieldCheck,
-            title: "Login seguro",
-            body: "As credenciais não passam pelo frontend. O login é feito na página oficial do Keycloak.",
+            title: t("auth.secureLoginTitle"),
+            body: t("auth.secureLoginBody"),
           },
           {
             Icon: Lock,
-            title: "Token com refresh",
-            body: "O access token é renovado automaticamente enquanto a sessão estiver ativa.",
+            title: t("auth.refreshTitle"),
+            body: t("auth.refreshBody"),
           },
         ].map(({ Icon, title, body }) => (
           <View key={title} style={styles.infoRow}>
@@ -52,7 +51,6 @@ export function AuthScreen({ onLogin, onRegister, loading, configError }: AuthSc
         ))}
       </View>
 
-      {/* Bottom actions */}
       <View style={styles.actions}>
         {configError && (
           <View style={styles.errorBox}>
@@ -69,7 +67,7 @@ export function AuthScreen({ onLogin, onRegister, loading, configError }: AuthSc
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.btnPrimaryText}>Continuar com Keycloak</Text>
+            <Text style={styles.btnPrimaryText}>{t("auth.continue")}</Text>
           )}
         </TouchableOpacity>
 
@@ -79,7 +77,7 @@ export function AuthScreen({ onLogin, onRegister, loading, configError }: AuthSc
           disabled={loading || Boolean(configError)}
           activeOpacity={0.85}
         >
-          <Text style={styles.btnSecondaryText}>Criar conta</Text>
+          <Text style={styles.btnSecondaryText}>{t("auth.createAccount")}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -149,7 +147,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   infoTitle: { fontSize: Typography.base, fontWeight: "700", color: Colors.gray900 },
-  infoBody:  { fontSize: 13, color: Colors.gray500, marginTop: 2, lineHeight: 18 },
+  infoBody: { fontSize: 13, color: Colors.gray500, marginTop: 2, lineHeight: 18 },
   actions: {
     marginTop: "auto",
     paddingHorizontal: 24,

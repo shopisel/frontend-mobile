@@ -3,17 +3,19 @@ import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Home, List, ScanLine, BarChart2, User } from "lucide-react-native";
 import { Colors } from "../../src/styles/colors";
+import { useTranslation } from "react-i18next";
 
 const tabs = [
-  { name: "home", label: "Home", icon: Home },
-  { name: "lists", label: "Lists", icon: List },
-  { name: "scan", label: "Scan", icon: ScanLine },
-  { name: "prices", label: "Prices", icon: BarChart2 },
-  { name: "profile", label: "Profile", icon: User },
+  { name: "home", labelKey: "tabs.home", icon: Home },
+  { name: "lists", labelKey: "tabs.lists", icon: List },
+  { name: "scan", labelKey: "tabs.scan", icon: ScanLine },
+  { name: "prices", labelKey: "tabs.prices", icon: BarChart2 },
+  { name: "profile", labelKey: "tabs.profile", icon: User },
 ] as const;
 
 function TabBar({ state, navigation }: any) {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
 
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom || 8 }]}>
@@ -45,13 +47,13 @@ function TabBar({ state, navigation }: any) {
                   />
                 </View>
                 <Text style={[styles.label, { color: isActive ? Colors.primary600 : Colors.gray400, fontWeight: isActive ? "700" : "500" }]}>
-                  {tab.label}
+                  {t(tab.labelKey)}
                 </Text>
               </>
             )}
             {isScan && (
               <Text style={[styles.label, { color: isActive ? Colors.primary600 : Colors.gray400 }]}> 
-                {tab.label}
+                {t(tab.labelKey)}
               </Text>
             )}
           </TouchableOpacity>

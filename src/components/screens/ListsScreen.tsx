@@ -7,12 +7,14 @@ import {
   Plus, Trash2, ChevronRight, Check, Search, ShoppingCart, RefreshCw, ChevronLeft,
 } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTranslation } from "react-i18next";
 import { useLists, type ListResponse, type ListItemResponse, type ListItemRequest } from "../../api/useLists";
 import { useProducts, type Product } from "../../api/useProducts";
 import { useStores, type StoreResponse } from "../../api/useStores";
 import { AddProductModal, type AddListItemPayload } from "../modals/AddProductModal";
 import { Colors } from "../../styles/colors";
 import { Radii } from "../../styles/typography";
+import { formatCurrency } from "../../i18n/formatters";
 
 interface EnrichedItem extends ListItemResponse {
   name: string;
@@ -25,7 +27,9 @@ interface ListsScreenProps {
 }
 
 export function ListsScreen({ onNavigate }: ListsScreenProps) {
+  void onNavigate;
   const insets = useSafeAreaInsets();
+  const { t, i18n } = useTranslation();
   const { getLists, getList, createList, updateList } = useLists();
   const { getProductsByIds } = useProducts();
   const { getStores } = useStores();
@@ -70,19 +74,23 @@ export function ListsScreen({ onNavigate }: ListsScreenProps) {
 
       if (productIds.length) {
         const products = await getProductsByIds(productIds).catch(() => []);
-        products.forEach((product) => { productsMap[product.id] = product; });
+        products.forEach((product) => {
+          productsMap[product.id] = product;
+        });
       }
 
       if (storeIds.length) {
         const stores = await getStores({ ids: storeIds.join(",") }).catch(() => []);
-        stores.forEach((store) => { storesMap[store.id] = store; });
+        stores.forEach((store) => {
+          storesMap[store.id] = store;
+        });
       }
 
       const enriched: EnrichedItem[] = rawItems.map((item) => ({
         ...item,
-        name: productsMap[item.productId]?.name ?? "Unknown Product",
-        emoji: productsMap[item.productId]?.emoji ?? "??",
-        storeName: storesMap[item.storeId]?.name ?? "Unknown Store",
+        name: productsMap[item.productId]?.name ?? t("common.unknownProduct"),
+        emoji: productsMap[item.productId]?.emoji ?? "PK",
+        storeName: storesMap[item.storeId]?.name ?? t("common.unknownStore"),
       }));
 
       setLists((current) => current.map((list) => (list.id === listId ? { ...list, ...listData } : list)));
@@ -92,7 +100,7 @@ export function ListsScreen({ onNavigate }: ListsScreenProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [getList, getProductsByIds, getStores]);
+  }, [getList, getProductsByIds, getStores, t]);
 
   useEffect(() => {
     if (activeListId && view === "items") void loadItems(activeListId);
@@ -172,11 +180,11 @@ export function ListsScreen({ onNavigate }: ListsScreenProps) {
 
   if (view === "lists") {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
+      <View style={[styles.container, { paddingTop: insets.top }]}> 
         <View style={styles.header}>
           <View>
-            <Text style={styles.headerTitle}>Minhas Listas</Text>
-            <Text style={styles.headerSub}>Gere as tuas compras</Text>
+            <Text style={styles.headerTitle}>{t("lists.title")}</Text>
+            <Text style={styles.headerSub}>{t("lists.subtitle")}</Text>
           </View>
           <TouchableOpacity style={styles.iconBtn} onPress={() => void loadLists()}>
             <RefreshCw size={20} color={Colors.gray500} />
@@ -201,7 +209,7 @@ export function ListsScreen({ onNavigate }: ListsScreenProps) {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.listCardName}>{list.name}</Text>
-                      <Text style={styles.listCardCount}>{list.items?.length ?? 0} itens</Text>
+                      <Text style={styles.listCardCount}>{t("lists.itemCount", { count: list.items?.length ?? 0 })}</Text>
                     </View>
                     <ChevronRight size={20} color={Colors.gray300} />
                   </View>
@@ -210,7 +218,7 @@ export function ListsScreen({ onNavigate }: ListsScreenProps) {
 
               {!lists.length && !isLoading && (
                 <View style={styles.card}>
-                  <Text style={{ fontSize: 14, color: Colors.gray500 }}>Ainda não tens listas.</Text>
+                  <Text style={styles.emptyText}>{t("lists.noLists")}</Text>
                 </View>
               )}
 
@@ -219,14 +227,14 @@ export function ListsScreen({ onNavigate }: ListsScreenProps) {
                   <TextInput
                     value={newListName}
                     onChangeText={setNewListName}
-                    placeholder="Nome da nova lista"
+                    placeholder={t("lists.newListPlaceholder")}
                     placeholderTextColor={Colors.gray400}
                     style={styles.searchInput}
                   />
                 </View>
                 <TouchableOpacity style={styles.newListBtn} onPress={() => void handleCreateList()} activeOpacity={0.8}>
                   <Plus size={20} color={Colors.gray400} />
-                  <Text style={styles.newListText}>Create New List</Text>
+                  <Text style={styles.newListText}>{t("lists.createNewList")}</Text>
                 </TouchableOpacity>
               </View>
             </>
@@ -237,12 +245,12 @@ export function ListsScreen({ onNavigate }: ListsScreenProps) {
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { paddingTop: insets.top }]}> 
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => setView("lists")}>
           <ChevronLeft size={18} color={Colors.gray500} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { flex: 1 }]} numberOfLines={1}>{activeList?.name ?? "Lista"}</Text>
+        <Text style={[styles.headerTitle, { flex: 1 }]} numberOfLines={1}>{activeList?.name ?? t("lists.defaultListName")}</Text>
         <TouchableOpacity style={styles.iconBtnSm} onPress={() => activeListId && void loadItems(activeListId)}>
           <RefreshCw size={16} color={Colors.primary600} />
         </TouchableOpacity>
@@ -261,13 +269,13 @@ export function ListsScreen({ onNavigate }: ListsScreenProps) {
           <TextInput
             value={searchInput}
             onChangeText={setSearchInput}
-            placeholder="Search items..."
+            placeholder={t("lists.searchItemsPlaceholder")}
             placeholderTextColor={Colors.gray400}
             style={styles.searchInput}
           />
         </View>
         <View style={styles.totalBadge}>
-          <Text style={styles.totalText}>€{total.toFixed(2)}</Text>
+          <Text style={styles.totalText}>{formatCurrency(total, i18n.language)}</Text>
         </View>
       </View>
 
@@ -275,17 +283,17 @@ export function ListsScreen({ onNavigate }: ListsScreenProps) {
         {isLoading && filteredItems.length === 0 ? (
           <ActivityIndicator color={Colors.primary600} />
         ) : !filteredItems.length ? (
-          <View style={styles.card}><Text style={{ fontSize: 13, color: Colors.gray500, textAlign: "center" }}>Nenhum item adicionado.</Text></View>
+          <View style={styles.card}><Text style={styles.emptyText}>{t("lists.noItems")}</Text></View>
         ) : (
           filteredItems.map((item) => (
             <View key={item.id} style={styles.itemCard}>
-              <View style={styles.itemEmoji}><Text style={{ fontSize: 20 }}>{item.emoji ?? "??"}</Text></View>
+              <View style={styles.itemEmoji}><Text style={{ fontSize: 16, fontWeight: "700" }}>{item.emoji ?? "PK"}</Text></View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.itemName, item.checked && styles.itemNameChecked]} numberOfLines={1}>{item.name}</Text>
-                <Text style={styles.itemSub}>{item.quantity} un · {item.storeName}</Text>
+                <Text style={styles.itemSub}>{item.quantity} {t("lists.quantityUnit")} | {item.storeName}</Text>
               </View>
               <Text style={[styles.itemPrice, item.checked && { color: Colors.gray400 }]}>
-                €{(item.price * item.quantity).toFixed(2)}
+                {formatCurrency(item.price * item.quantity, i18n.language)}
               </Text>
               <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDelete(item.id)}>
                 <Trash2 size={14} color="#F87171" />
@@ -353,4 +361,5 @@ const styles = StyleSheet.create({
   checkCircle: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: Colors.gray300, alignItems: "center", justifyContent: "center" },
   checkCircleChecked: { borderColor: Colors.success500, backgroundColor: Colors.success500 },
   fab: { position: "absolute", bottom: 24, right: 20, width: 56, height: 56, borderRadius: 28, backgroundColor: Colors.primary600, alignItems: "center", justifyContent: "center", shadowColor: Colors.primary600, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.4, shadowRadius: 10, elevation: 10 },
+  emptyText: { fontSize: 13, color: Colors.gray500, textAlign: "center" },
 });

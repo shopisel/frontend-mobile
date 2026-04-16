@@ -3,6 +3,7 @@ import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOp
 import { useRouter } from "expo-router";
 import { Plus, RefreshCw, ShoppingCart, ChevronRight } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTranslation } from "react-i18next";
 import { useLists, type ListResponse } from "../../api/useLists";
 import { Colors } from "../../styles/colors";
 import { Radii } from "../../styles/typography";
@@ -10,6 +11,7 @@ import { Radii } from "../../styles/typography";
 export function ListsOverviewScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { t } = useTranslation();
   const { getLists, createList } = useLists();
 
   const [lists, setLists] = useState<ListResponse[]>([]);
@@ -26,11 +28,11 @@ export function ListsOverviewScreen() {
     } catch (error) {
       console.error(error);
       setLists([]);
-      setLoadError(error instanceof Error ? error.message : "Falha ao carregar listas.");
+      setLoadError(error instanceof Error ? error.message : t("lists.loadError"));
     } finally {
       setIsLoading(false);
     }
-  }, [getLists]);
+  }, [getLists, t]);
 
   useEffect(() => {
     void loadLists();
@@ -48,7 +50,7 @@ export function ListsOverviewScreen() {
       router.push(`/lists/${newList.id}` as never);
     } catch (error) {
       console.error(error);
-      setLoadError(error instanceof Error ? error.message : "Falha ao criar lista.");
+      setLoadError(error instanceof Error ? error.message : t("lists.createError"));
     } finally {
       setIsLoading(false);
     }
@@ -58,8 +60,8 @@ export function ListsOverviewScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <View>
-          <Text style={styles.headerTitle}>Minhas Listas</Text>
-          <Text style={styles.headerSub}>Gere as tuas compras</Text>
+          <Text style={styles.headerTitle}>{t("lists.title")}</Text>
+          <Text style={styles.headerSub}>{t("lists.subtitle")}</Text>
         </View>
         <TouchableOpacity style={styles.iconBtn} onPress={() => void loadLists()}>
           <RefreshCw size={20} color={Colors.gray500} />
@@ -75,7 +77,7 @@ export function ListsOverviewScreen() {
           <>
             {loadError && (
               <View style={styles.errorCard}>
-                <Text style={styles.errorTitle}>Nao foi possivel carregar as listas.</Text>
+                <Text style={styles.errorTitle}>{t("lists.loadError")}</Text>
                 <Text style={styles.errorText}>{loadError}</Text>
               </View>
             )}
@@ -93,7 +95,7 @@ export function ListsOverviewScreen() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.listCardName}>{list.name}</Text>
-                    <Text style={styles.listCardCount}>{list.items?.length ?? 0} itens</Text>
+                    <Text style={styles.listCardCount}>{t("lists.itemCount", { count: list.items?.length ?? 0 })}</Text>
                   </View>
                   <ChevronRight size={20} color={Colors.gray300} />
                 </View>
@@ -102,7 +104,7 @@ export function ListsOverviewScreen() {
 
             {!lists.length && !isLoading && !loadError && (
               <View style={styles.card}>
-                <Text style={styles.emptyText}>Ainda nao tens listas.</Text>
+                <Text style={styles.emptyText}>{t("lists.noLists")}</Text>
               </View>
             )}
 
@@ -111,14 +113,14 @@ export function ListsOverviewScreen() {
                 <TextInput
                   value={newListName}
                   onChangeText={setNewListName}
-                  placeholder="Nome da nova lista"
+                  placeholder={t("lists.newListPlaceholder")}
                   placeholderTextColor={Colors.gray400}
                   style={styles.searchInput}
                 />
               </View>
               <TouchableOpacity style={styles.newListBtn} onPress={() => void handleCreateList()} activeOpacity={0.8}>
                 <Plus size={20} color={Colors.gray400} />
-                <Text style={styles.newListText}>Create New List</Text>
+                <Text style={styles.newListText}>{t("lists.createNewList")}</Text>
               </TouchableOpacity>
             </View>
           </>
