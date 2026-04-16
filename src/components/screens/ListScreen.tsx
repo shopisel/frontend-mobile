@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Check, ChevronLeft, Plus, RefreshCw, Search, Trash2 } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -9,9 +9,12 @@ import { useStores, type StoreResponse } from "../../api/useStores";
 import { AddProductModal, type AddListItemPayload } from "../modals/AddProductModal";
 import { Colors } from "../../styles/colors";
 import { Radii } from "../../styles/typography";
+import { getCategoryImage } from "../../utils/categoryImages";
 
 interface EnrichedItem extends ListItemResponse {
   name: string;
+  image?: string;
+  categoryId?: string;
   emoji: string;
   storeName: string;
 }
@@ -47,18 +50,24 @@ export function ListScreen() {
 
       if (productIds.length) {
         const products = await getProductsByIds(productIds).catch(() => []);
-        products.forEach((product) => { productsMap[product.id] = product; });
+        products.forEach((product) => {
+          productsMap[product.id] = product;
+        });
       }
 
       if (storeIds.length) {
         const stores = await getStores({ ids: storeIds.join(",") }).catch(() => []);
-        stores.forEach((store) => { storesMap[store.id] = store; });
+        stores.forEach((store) => {
+          storesMap[store.id] = store;
+        });
       }
 
       const enriched: EnrichedItem[] = rawItems.map((item) => ({
         ...item,
         name: productsMap[item.productId]?.name ?? "Unknown Product",
-        emoji: productsMap[item.productId]?.emoji ?? "📦",
+        image: productsMap[item.productId]?.image,
+        categoryId: productsMap[item.productId]?.categoryId,
+        emoji: productsMap[item.productId]?.emoji ?? "PK",
         storeName: storesMap[item.storeId]?.name ?? "Unknown Store",
       }));
 
@@ -113,6 +122,8 @@ export function ListScreen() {
         price: item.price,
         checked: item.checked,
         name: item.name,
+        image: item.image,
+        categoryId: item.categoryId,
         emoji: item.emoji,
         storeName: item.storeName,
       },
@@ -123,16 +134,19 @@ export function ListScreen() {
   };
 
   const filteredItems = useMemo(() => (
-    searchInput.trim()
-      ? items.filter((item) => item.name.toLowerCase().includes(searchInput.toLowerCase()))
-      : items
+    searchInput.trim() ? items.filter((item) => item.name.toLowerCase().includes(searchInput.toLowerCase())) : items
   ), [items, searchInput]);
 
   const total = items.filter((item) => !item.checked).reduce((sum, item) => sum + item.price * item.quantity, 0);
   const checkedCount = items.filter((item) => item.checked).length;
+  const getItemImageSource = (item: EnrichedItem) => {
+    const raw = item.image?.trim();
+    if (raw && /^https?:\/\//i.test(raw)) return { uri: raw };
+    return getCategoryImage(item.image, item.categoryId ?? item.name);
+  };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { paddingTop: insets.top }]}> 
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
           <ChevronLeft size={18} color={Colors.gray500} />
@@ -177,15 +191,17 @@ export function ListScreen() {
           filteredItems.map((item) => (
             <View key={item.id} style={styles.itemCard}>
               <View style={styles.itemEmoji}>
-                <Text style={{ fontSize: 20 }}>{item.emoji || "📦"}</Text>
+                {getItemImageSource(item) ? (
+                  <Image source={getItemImageSource(item)!} style={styles.itemImage} resizeMode="cover" />
+                ) : (
+                  <Text style={{ fontSize: 20 }}>{item.emoji || "PK"}</Text>
+                )}
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.itemName, item.checked && styles.itemNameChecked]} numberOfLines={1}>{item.name}</Text>
-                <Text style={styles.itemSub}>{item.quantity} un · {item.storeName}</Text>
+                <Text style={styles.itemSub}>{item.quantity} un | {item.storeName}</Text>
               </View>
-              <Text style={[styles.itemPrice, item.checked && { color: Colors.gray400 }]}>
-                EUR {(item.price * item.quantity).toFixed(2)}
-              </Text>
+              <Text style={[styles.itemPrice, item.checked && { color: Colors.gray400 }]}>EUR {(item.price * item.quantity).toFixed(2)}</Text>
               <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDelete(item.id)}>
                 <Trash2 size={14} color="#F87171" />
               </TouchableOpacity>
@@ -234,7 +250,8 @@ const styles = StyleSheet.create({
   card: { backgroundColor: Colors.surface, borderRadius: Radii["3xl"], padding: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 },
   emptyText: { fontSize: 13, color: Colors.gray500, textAlign: "center" },
   itemCard: { backgroundColor: Colors.surface, borderRadius: Radii["2xl"], paddingHorizontal: 16, paddingVertical: 14, flexDirection: "row", alignItems: "center", gap: 10, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
-  itemEmoji: { width: 40, height: 40, borderRadius: Radii.lg, backgroundColor: Colors.gray50, alignItems: "center", justifyContent: "center" },
+  itemEmoji: { width: 40, height: 40, borderRadius: Radii.lg, backgroundColor: Colors.gray50, alignItems: "center", justifyContent: "center", overflow: "hidden" },
+  itemImage: { width: "100%", height: "100%" },
   itemName: { fontSize: 14, fontWeight: "600", color: Colors.gray900 },
   itemNameChecked: { textDecorationLine: "line-through", color: Colors.gray400 },
   itemSub: { fontSize: 12, color: Colors.gray400 },
@@ -244,3 +261,4 @@ const styles = StyleSheet.create({
   checkCircleChecked: { borderColor: Colors.success500, backgroundColor: Colors.success500 },
   fab: { position: "absolute", bottom: 24, right: 20, width: 56, height: 56, borderRadius: 28, backgroundColor: Colors.primary600, alignItems: "center", justifyContent: "center", shadowColor: Colors.primary600, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.4, shadowRadius: 10, elevation: 10 },
 });
+

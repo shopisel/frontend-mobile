@@ -254,7 +254,7 @@ export function PricesScreen() {
   const getProductImageSource = (product: Product) => {
     const raw = product.image?.trim();
     if (raw && /^https?:\/\//i.test(raw)) return { uri: raw };
-    return getCategoryImage(product.image, product.name);
+    return getCategoryImage(product.image, product.categoryId);
   };
 
   const emptyProductsMessage = searchQuery.trim()

@@ -14,7 +14,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Grid3X3,
-  ScanLine,
   Search,
   Store,
   Type,
@@ -29,7 +28,7 @@ import { Colors } from "../../styles/colors";
 import { Radii, Typography } from "../../styles/typography";
 import { formatCurrency } from "../../i18n/formatters";
 
-type InputMethod = "text" | "scan" | "category";
+type InputMethod = "text" | "category";
 
 export type AddListItemPayload = {
   productId: string;
@@ -38,6 +37,8 @@ export type AddListItemPayload = {
   price: number;
   checked: boolean;
   name: string;
+  image?: string;
+  categoryId?: string;
   emoji: string;
   storeName: string;
 };
@@ -52,12 +53,11 @@ function MethodToggle({ method, onChange }: { method: InputMethod; onChange: (m:
   const { t } = useTranslation();
   const tabs: { id: InputMethod; label: string; Icon: typeof Type }[] = [
     { id: "text", label: t("addProduct.methodSearch"), Icon: Type },
-    { id: "scan", label: t("addProduct.methodScan"), Icon: ScanLine },
     { id: "category", label: t("addProduct.methodCategory"), Icon: Grid3X3 },
   ];
 
-  const background: Record<InputMethod, string> = { text: Colors.primary50, scan: "#F3E8FF", category: "#ECFDF5" };
-  const color: Record<InputMethod, string> = { text: Colors.primary600, scan: "#9333EA", category: "#10B981" };
+  const background: Record<InputMethod, string> = { text: Colors.primary50, category: "#ECFDF5" };
+  const color: Record<InputMethod, string> = { text: Colors.primary600, category: "#10B981" };
 
   return (
     <View style={methodStyles.row}>
@@ -81,7 +81,7 @@ function MethodToggle({ method, onChange }: { method: InputMethod; onChange: (m:
 
 function ProductRow({ product, onPress }: { product: Product; onPress: () => void }) {
   const { t } = useTranslation();
-  const imageSource = getCategoryImage(product.image);
+  const imageSource = getCategoryImage(product.image, product.categoryId);
 
   return (
     <TouchableOpacity style={productStyles.row} onPress={onPress} activeOpacity={0.85}>
@@ -132,7 +132,6 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
   const [selectedCat, setSelectedCat] = useState<Category | null>(null);
   const [selectedSubCat, setSelectedSubCat] = useState<Category | null>(null);
   const [loadingCats, setLoadingCats] = useState(false);
-  const [isScanning, setIsScanning] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [stores, setStores] = useState<StoreResponse[]>([]);
   const [priceByStore, setPriceByStore] = useState<Record<string, number>>({});
@@ -150,7 +149,6 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
       setSubCats([]);
       setSelectedCat(null);
       setSelectedSubCat(null);
-      setIsScanning(false);
       setSelectedProduct(null);
       setStores([]);
       setPriceByStore({});
@@ -250,11 +248,6 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
     })();
   }, [getPrices, getStores, selectedProduct]);
 
-  const startScan = () => {
-    setIsScanning(true);
-    setTimeout(() => setIsScanning(false), 1500);
-  };
-
   const sortedStores = useMemo(
     () => [...stores].sort((a, b) => (priceByStore[a.id] ?? Infinity) - (priceByStore[b.id] ?? Infinity)),
     [priceByStore, stores],
@@ -270,6 +263,8 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
       price: priceByStore[store.id] ?? 0,
       checked: false,
       name: selectedProduct.name,
+      image: selectedProduct.image,
+      categoryId: selectedProduct.categoryId,
       emoji: selectedProduct.emoji ?? "PK",
       storeName: store.name,
     });
@@ -324,7 +319,11 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
             <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
               <View style={styles.productPreview}>
                 <View style={styles.productPreviewEmoji}>
-                  <Text style={styles.previewBadge}>{selectedProduct.emoji ?? "PK"}</Text>
+                  {getCategoryImage(selectedProduct.image, selectedProduct.categoryId) ? (
+                    <Image source={getCategoryImage(selectedProduct.image, selectedProduct.categoryId)!} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+                  ) : (
+                    <Text style={styles.previewBadge}>{selectedProduct.emoji ?? "PK"}</Text>
+                  )}
                 </View>
                 <Text style={styles.productPreviewName} numberOfLines={2}>{selectedProduct.name}</Text>
               </View>
@@ -379,28 +378,6 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
                       : <Text style={styles.emptyText}>{query.trim() ? t("addProduct.noProducts") : t("addProduct.typeToSearch")}</Text>}
                   </ScrollView>
                 </>
-              )}
-
-              {method === "scan" && !selectedCat && (
-                <View style={styles.scanArea}>
-                  <View style={styles.scanFrame}>
-                    <View style={[styles.corner, styles.topLeft]} />
-                    <View style={[styles.corner, styles.topRight]} />
-                    <View style={[styles.corner, styles.bottomLeft]} />
-                    <View style={[styles.corner, styles.bottomRight]} />
-                    <Text style={styles.scanBoxLabel}>PK</Text>
-                    <Text style={styles.scanHint}>{isScanning ? t("addProduct.scanning") : t("addProduct.scanHint")}</Text>
-                  </View>
-                  <TouchableOpacity
-                    style={[styles.scanBtn, isScanning && { opacity: 0.7 }]}
-                    onPress={startScan}
-                    disabled={isScanning}
-                    activeOpacity={0.85}
-                  >
-                    <ScanLine size={20} color="#fff" />
-                    <Text style={styles.scanBtnText}>{isScanning ? t("addProduct.scanning") : t("addProduct.startScan")}</Text>
-                  </TouchableOpacity>
-                </View>
               )}
 
               {method === "category" && (
@@ -475,17 +452,6 @@ const styles = StyleSheet.create({
   storeName: { fontSize: Typography.md, fontWeight: "700", color: Colors.gray900 },
   storeSub: { fontSize: Typography.sm, color: Colors.gray500, marginTop: 2 },
   storePrice: { fontSize: Typography.lg, fontWeight: "800", color: Colors.success500 },
-  scanArea: { flex: 1, alignItems: "center", justifyContent: "center", gap: 24, paddingVertical: 20 },
-  scanFrame: { width: 220, height: 220, borderRadius: 20, backgroundColor: Colors.gray50, alignItems: "center", justifyContent: "center", position: "relative" },
-  scanBoxLabel: { fontSize: 24, fontWeight: "800", color: Colors.gray700 },
-  scanHint: { fontSize: 13, color: Colors.gray500, marginTop: 10, textAlign: "center" },
-  scanBtn: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 28, paddingVertical: 15, backgroundColor: Colors.primary600, borderRadius: Radii["2xl"] },
-  scanBtnText: { fontSize: 15, fontWeight: "700", color: "#fff" },
-  corner: { position: "absolute", width: 24, height: 24, borderColor: Colors.primary600 },
-  topLeft: { top: 16, left: 16, borderTopWidth: 3, borderLeftWidth: 3, borderTopLeftRadius: 4 },
-  topRight: { top: 16, right: 16, borderTopWidth: 3, borderRightWidth: 3, borderTopRightRadius: 4 },
-  bottomLeft: { bottom: 16, left: 16, borderBottomWidth: 3, borderLeftWidth: 3, borderBottomLeftRadius: 4 },
-  bottomRight: { bottom: 16, right: 16, borderBottomWidth: 3, borderRightWidth: 3, borderBottomRightRadius: 4 },
 });
 
 const methodStyles = StyleSheet.create({

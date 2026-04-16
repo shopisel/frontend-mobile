@@ -1,6 +1,6 @@
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, ActivityIndicator,
+  TextInput, ActivityIndicator, Image,
 } from "react-native";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
@@ -15,9 +15,12 @@ import { AddProductModal, type AddListItemPayload } from "../modals/AddProductMo
 import { Colors } from "../../styles/colors";
 import { Radii } from "../../styles/typography";
 import { formatCurrency } from "../../i18n/formatters";
+import { getCategoryImage } from "../../utils/categoryImages";
 
 interface EnrichedItem extends ListItemResponse {
   name: string;
+  image?: string;
+  categoryId?: string;
   emoji: string;
   storeName: string;
 }
@@ -89,6 +92,8 @@ export function ListsScreen({ onNavigate }: ListsScreenProps) {
       const enriched: EnrichedItem[] = rawItems.map((item) => ({
         ...item,
         name: productsMap[item.productId]?.name ?? t("common.unknownProduct"),
+        image: productsMap[item.productId]?.image,
+        categoryId: productsMap[item.productId]?.categoryId,
         emoji: productsMap[item.productId]?.emoji ?? "PK",
         storeName: storesMap[item.storeId]?.name ?? t("common.unknownStore"),
       }));
@@ -160,6 +165,8 @@ export function ListsScreen({ onNavigate }: ListsScreenProps) {
         price: item.price,
         checked: item.checked,
         name: item.name,
+        image: item.image,
+        categoryId: item.categoryId,
         emoji: item.emoji,
         storeName: item.storeName,
       },
@@ -177,6 +184,11 @@ export function ListsScreen({ onNavigate }: ListsScreenProps) {
 
   const total = items.filter((item) => !item.checked).reduce((sum, item) => sum + item.price * item.quantity, 0);
   const checkedCount = items.filter((item) => item.checked).length;
+  const getItemImageSource = (item: EnrichedItem) => {
+    const raw = item.image?.trim();
+    if (raw && /^https?:\/\//i.test(raw)) return { uri: raw };
+    return getCategoryImage(item.image, item.categoryId ?? item.name);
+  };
 
   if (view === "lists") {
     return (
@@ -287,7 +299,13 @@ export function ListsScreen({ onNavigate }: ListsScreenProps) {
         ) : (
           filteredItems.map((item) => (
             <View key={item.id} style={styles.itemCard}>
-              <View style={styles.itemEmoji}><Text style={{ fontSize: 16, fontWeight: "700" }}>{item.emoji ?? "PK"}</Text></View>
+              <View style={styles.itemEmoji}>
+                {getItemImageSource(item) ? (
+                  <Image source={getItemImageSource(item)!} style={styles.itemImage} resizeMode="cover" />
+                ) : (
+                  <Text style={{ fontSize: 16, fontWeight: "700" }}>{item.emoji ?? "PK"}</Text>
+                )}
+              </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.itemName, item.checked && styles.itemNameChecked]} numberOfLines={1}>{item.name}</Text>
                 <Text style={styles.itemSub}>{item.quantity} {t("lists.quantityUnit")} | {item.storeName}</Text>
@@ -352,7 +370,8 @@ const styles = StyleSheet.create({
   totalBadge: { paddingHorizontal: 12, paddingVertical: 8, backgroundColor: Colors.primary50, borderRadius: Radii.xl },
   totalText: { fontSize: 13, fontWeight: "700", color: Colors.primary600 },
   itemCard: { backgroundColor: Colors.surface, borderRadius: Radii["2xl"], paddingHorizontal: 16, paddingVertical: 14, flexDirection: "row", alignItems: "center", gap: 10, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
-  itemEmoji: { width: 40, height: 40, borderRadius: Radii.lg, backgroundColor: Colors.gray50, alignItems: "center", justifyContent: "center" },
+  itemEmoji: { width: 40, height: 40, borderRadius: Radii.lg, backgroundColor: Colors.gray50, alignItems: "center", justifyContent: "center", overflow: "hidden" },
+  itemImage: { width: "100%", height: "100%" },
   itemName: { fontSize: 14, fontWeight: "600", color: Colors.gray900 },
   itemNameChecked: { textDecorationLine: "line-through", color: Colors.gray400 },
   itemSub: { fontSize: 12, color: Colors.gray400 },

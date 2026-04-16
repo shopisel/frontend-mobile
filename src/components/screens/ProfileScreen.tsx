@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import {
   ScrollView,
   StyleSheet,
@@ -7,12 +7,14 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useFocusEffect } from "expo-router";
 import { Bell, LogOut, MapPin, Moon, Shield, Store, User as UserIcon } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Colors } from "../../styles/colors";
 import { Radii, Typography } from "../../styles/typography";
 import { useTranslation } from "react-i18next";
 import { useLanguage } from "../../i18n/LanguageProvider";
+import { useLists } from "../../api/useLists";
 
 interface ProfileScreenProps {
   onLogout: () => void;
@@ -24,19 +26,20 @@ interface ProfileScreenProps {
 }
 
 const preferredStores = [
-  { name: "FreshMart", distance: "0.3 km" },
-  { name: "NatureMart", distance: "0.7 km" },
-  { name: "CostPlus", distance: "1.1 km" },
+  { name: "Continente", distance: "0.3 km" },
+  { name: "Pingo Doce", distance: "0.8 km" },
 ];
 
 export function ProfileScreen({ onLogout, user }: ProfileScreenProps) {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
   const { language, setLanguage } = useLanguage();
+  const { getLists } = useLists();
   const [priceAlerts, setPriceAlerts] = useState(true);
   const [dealNotifications, setDealNotifications] = useState(true);
   const [locationEnabled, setLocationEnabled] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
+  const [listsCount, setListsCount] = useState(0);
 
   const displayName = user?.name || user?.username || t("common.user");
   const displayEmail = user?.email || t("common.noEmail");
@@ -46,6 +49,28 @@ export function ProfileScreen({ onLogout, user }: ProfileScreenProps) {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() ?? "")
     .join("");
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+
+      const loadListsCount = async () => {
+        try {
+          const lists = await getLists();
+          if (active) setListsCount(Array.isArray(lists) ? lists.length : 0);
+        } catch (error) {
+          console.error(error);
+          if (active) setListsCount(0);
+        }
+      };
+
+      void loadListsCount();
+
+      return () => {
+        active = false;
+      };
+    }, [getLists]),
+  );
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingTop: insets.top, paddingBottom: 28 }}>
@@ -68,9 +93,8 @@ export function ProfileScreen({ onLogout, user }: ProfileScreenProps) {
       <View style={styles.content}>
         <View style={styles.statsRow}>
           {[
-            { label: t("profile.statsLists"), value: "8" },
-            { label: t("profile.statsSaved"), value: "€142" },
-            { label: t("profile.statsScans"), value: "34" },
+            { label: t("profile.statsLists"), value: String(listsCount) },
+            { label: t("profile.statsScans"), value: "0" },
           ].map((stat) => (
             <View key={stat.label} style={styles.statCard}>
               <Text style={styles.statValue}>{stat.value}</Text>
