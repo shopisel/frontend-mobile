@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useRouter } from "expo-router";
-import { Plus, RefreshCw, ShoppingCart, ChevronRight, Trash2 } from "lucide-react-native";
+import { Plus, RefreshCw, ShoppingCart, ChevronRight, Trash2, Pencil } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useLists, type ListResponse } from "../../api/useLists";
@@ -13,13 +13,16 @@ export function ListsOverviewScreen() {
   const router = useRouter();
   const { t } = useTranslation();
   const { colors } = useTheme();
-  const { getLists, createList, removeList } = useLists();
+  const { getLists, createList, updateList, removeList } = useLists();
 
   const [lists, setLists] = useState<ListResponse[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [newListName, setNewListName] = useState("");
+  const [renameListName, setRenameListName] = useState("");
+  const [listBeingRenamed, setListBeingRenamed] = useState<ListResponse | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showRenameModal, setShowRenameModal] = useState(false);
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const loadLists = useCallback(async () => {
@@ -74,6 +77,53 @@ export function ListsOverviewScreen() {
     }
   };
 
+  const openRenameModal = (list: ListResponse) => {
+    setListBeingRenamed(list);
+    setRenameListName(list.name);
+    setShowRenameModal(true);
+  };
+
+  const closeRenameModal = () => {
+    setShowRenameModal(false);
+    setListBeingRenamed(null);
+    setRenameListName("");
+  };
+
+  const handleRenameList = async () => {
+    if (!listBeingRenamed) return;
+
+    const nextName = renameListName.trim();
+    if (!nextName) return;
+    if (nextName === listBeingRenamed.name) {
+      closeRenameModal();
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const currentItems = listBeingRenamed.items ?? [];
+      const updatedList = await updateList(
+        listBeingRenamed.id,
+        nextName,
+        currentItems.map((item) => ({
+          productId: item.productId,
+          storeId: item.storeId,
+          quantity: item.quantity,
+          price: item.price,
+          checked: item.checked,
+        })),
+      );
+      setLists((current) => current.map((list) => (list.id === listBeingRenamed.id ? updatedList : list)));
+      setLoadError(null);
+      closeRenameModal();
+    } catch (error) {
+      console.error(error);
+      setLoadError(error instanceof Error ? error.message : t("lists.renameError"));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
@@ -117,13 +167,22 @@ export function ListsOverviewScreen() {
                     </View>
                     <ChevronRight size={20} color={colors.gray300} />
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.deleteListButton}
-                    onPress={() => void handleDeleteList(list.id)}
-                    activeOpacity={0.85}
-                  >
-                    <Trash2 size={16} color="#DC2626" />
-                  </TouchableOpacity>
+                  <View style={styles.listCardActions}>
+                    <TouchableOpacity
+                      style={styles.renameListButton}
+                      onPress={() => openRenameModal(list)}
+                      activeOpacity={0.85}
+                    >
+                      <Pencil size={16} color={colors.primary600} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.deleteListButton}
+                      onPress={() => void handleDeleteList(list.id)}
+                      activeOpacity={0.85}
+                    >
+                      <Trash2 size={16} color="#DC2626" />
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
             ))}
@@ -179,6 +238,37 @@ export function ListsOverviewScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal visible={showRenameModal} transparent animationType="fade" onRequestClose={closeRenameModal}>
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={closeRenameModal} />
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>{t("lists.renameFormTitle")}</Text>
+            <View style={styles.createListInput}>
+              <TextInput
+                value={renameListName}
+                onChangeText={setRenameListName}
+                placeholder={t("lists.renameListPlaceholder")}
+                placeholderTextColor={colors.gray400}
+                style={styles.searchInput}
+                autoFocus
+              />
+            </View>
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalSecondaryButton}
+                onPress={closeRenameModal}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.modalSecondaryButtonText}>{t("common.cancel")}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalPrimaryButton} onPress={() => void handleRenameList()} activeOpacity={0.85}>
+                <Text style={styles.modalPrimaryButtonText}>{t("common.save")}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -196,9 +286,11 @@ function createStyles(colors: ReturnType<typeof useTheme>["colors"]) {
   errorText: { fontSize: 13, color: "#DC2626" },
   listCardRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   listCardMain: { flex: 1, flexDirection: "row", alignItems: "center", gap: 12 },
+  listCardActions: { flexDirection: "row", alignItems: "center", gap: 8 },
   listCardIcon: { width: 40, height: 40, borderRadius: Radii.lg, backgroundColor: colors.primary50, alignItems: "center", justifyContent: "center" },
   listCardName: { fontSize: 15, fontWeight: "700", color: colors.gray900 },
   listCardCount: { fontSize: 12, color: colors.gray400 },
+  renameListButton: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primary50, alignItems: "center", justifyContent: "center" },
   deleteListButton: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#FEF2F2", alignItems: "center", justifyContent: "center" },
   createListInput: { backgroundColor: colors.gray50, borderRadius: Radii["2xl"], paddingHorizontal: 16, height: 48, justifyContent: "center" },
   searchInput: { flex: 1, fontSize: 13, color: colors.gray900 },
