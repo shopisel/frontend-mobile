@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { useFocusEffect } from "expo-router";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Image } from "react-native";
-import { Search, Bell, Plus, ChevronRight, TrendingDown, ShoppingBag, Zap } from "lucide-react-native";
+import { Search, Bell, Plus, ChevronRight, TrendingDown, ShoppingBag, Star, Zap } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Radii, Typography } from "../../styles/typography";
 import { useAuth } from "../../auth/AuthProvider";
@@ -47,9 +47,12 @@ type AlertItem = {
 interface HomeScreenProps {
   onNavigate: (tab: string) => void;
   onOpenList?: (listId: string) => void;
+  favoriteProducts: Product[];
+  favoritesLoading: boolean;
+  favoritesError: string | null;
 }
 
-export function HomeScreen({ onNavigate, onOpenList }: HomeScreenProps) {
+export function HomeScreen({ onNavigate, onOpenList, favoriteProducts, favoritesLoading, favoritesError }: HomeScreenProps) {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { t, i18n } = useTranslation();
@@ -109,6 +112,8 @@ export function HomeScreen({ onNavigate, onOpenList }: HomeScreenProps) {
     () => formatCurrency(alerts.reduce((sum, alert) => sum + Math.max(alert.from - alert.to, 0), 0), i18n.language),
     [alerts, i18n.language],
   );
+
+  const favoritePreview = useMemo(() => favoriteProducts.slice(0, 4), [favoriteProducts]);
 
   const loadHomeData = useCallback(async () => {
     setIsLoading(true);
@@ -329,6 +334,53 @@ export function HomeScreen({ onNavigate, onOpenList }: HomeScreenProps) {
           </View>
         </View>
 
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{t("home.favoriteItems")}</Text>
+            <TouchableOpacity onPress={() => onNavigate("profile")} style={styles.seeAll}>
+              <Text style={styles.seeAllText}>{t("home.seeAll")}</Text>
+              <ChevronRight size={16} color={colors.primary600} />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.card}>
+            {favoritesLoading ? (
+              <View style={styles.emptyStateCard}>
+                <ActivityIndicator color={colors.primary600} />
+              </View>
+            ) : favoritesError ? (
+              <View style={styles.emptyStateCard}>
+                <Text style={styles.emptyStateText}>{favoritesError}</Text>
+              </View>
+            ) : favoritePreview.length ? (
+              favoritePreview.map((product, idx) => {
+                const imageSource = getProductImage(product);
+
+                return (
+                  <View key={product.id} style={[styles.listRow, idx < favoritePreview.length - 1 && styles.listRowBorder]}>
+                    <View style={styles.productImageBox}>
+                      {imageSource ? (
+                        <Image source={imageSource} style={styles.productImage} resizeMode="cover" />
+                      ) : (
+                        <View style={styles.emoji}>
+                          <Text style={styles.emojiText}>{getBadge(product.name)}</Text>
+                        </View>
+                      )}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.itemName}>{product.name}</Text>
+                    </View>
+                    <Star size={16} color="#F59E0B" fill="#F59E0B" />
+                  </View>
+                );
+              })
+            ) : (
+              <View style={styles.emptyStateCard}>
+                <Text style={styles.emptyStateText}>{t("home.noFavorites")}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+
         <View style={{ marginBottom: 16 }}>
           <View style={[styles.sectionHeader, { paddingHorizontal: 20 }]}> 
             <Text style={styles.sectionTitle}>{t("home.nearbyDeals")}</Text>
@@ -409,6 +461,12 @@ function getBadge(value?: string) {
     .map((part) => part[0]?.toUpperCase() ?? "")
     .join("")
     .slice(0, 2) || "PK";
+}
+
+function getProductImage(product: Product) {
+  const raw = product.image?.trim();
+  if (raw && /^https?:\/\//i.test(raw)) return { uri: raw };
+  return getCategoryImage(product.image, product.categoryId);
 }
 
 function getCardColor(index: number, colors: ReturnType<typeof useTheme>["colors"]) {

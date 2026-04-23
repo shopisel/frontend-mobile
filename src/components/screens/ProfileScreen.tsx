@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import {
+  Image,
   ScrollView,
   StyleSheet,
   Switch,
@@ -8,13 +9,15 @@ import {
   View,
 } from "react-native";
 import { useFocusEffect } from "expo-router";
-import { Bell, LogOut, MapPin, Moon, Shield, Store, User as UserIcon } from "lucide-react-native";
+import { Bell, Loader, LogOut, MapPin, Moon, RotateCcw, Shield, Star, Store, User as UserIcon } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Radii, Typography } from "../../styles/typography";
 import { useTranslation } from "react-i18next";
 import { useLanguage } from "../../i18n/LanguageProvider";
 import { useLists } from "../../api/useLists";
 import { useTheme } from "../../theme/ThemeProvider";
+import type { Product } from "../../api/useProducts";
+import { getCategoryImage } from "../../utils/categoryImages";
 
 interface ProfileScreenProps {
   onLogout: () => void;
@@ -23,14 +26,27 @@ interface ProfileScreenProps {
     email?: string;
     username?: string;
   } | null;
+  favoriteProducts: Product[];
+  favoritesLoading: boolean;
+  favoritesError: string | null;
+  onReloadFavorites: () => Promise<void>;
+  initialTab?: "settings" | "favorites";
 }
 
 const preferredStores = [
-  { name: "Continente", distance: "0.3 km" },
-  { name: "Pingo Doce", distance: "0.8 km" },
+  { name: "Continente" },
+  { name: "Pingo Doce" },
 ];
 
-export function ProfileScreen({ onLogout, user }: ProfileScreenProps) {
+export function ProfileScreen({
+  onLogout,
+  user,
+  favoriteProducts,
+  favoritesLoading,
+  favoritesError,
+  onReloadFavorites,
+  initialTab = "settings",
+}: ProfileScreenProps) {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
   const { language, setLanguage } = useLanguage();
@@ -40,6 +56,7 @@ export function ProfileScreen({ onLogout, user }: ProfileScreenProps) {
   const [dealNotifications, setDealNotifications] = useState(true);
   const [locationEnabled, setLocationEnabled] = useState(true);
   const [listsCount, setListsCount] = useState(0);
+  const [activeTab, setActiveTab] = useState<"settings" | "favorites">(initialTab);
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
   const displayName = user?.name || user?.username || t("common.user");
@@ -95,6 +112,7 @@ export function ProfileScreen({ onLogout, user }: ProfileScreenProps) {
         <View style={styles.statsRow}>
           {[
             { label: t("profile.statsLists"), value: String(listsCount) },
+            { label: t("profile.statsSaved"), value: "0" },
             { label: t("profile.statsScans"), value: "0" },
           ].map((stat) => (
             <View key={stat.label} style={styles.statCard}>
@@ -104,106 +122,182 @@ export function ProfileScreen({ onLogout, user }: ProfileScreenProps) {
           ))}
         </View>
 
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionTitleRow}>
-            <Store size={16} color={colors.primary600} />
-            <Text style={styles.sectionTitle}>{t("profile.preferredStores")}</Text>
-          </View>
-          {preferredStores.map((store) => (
-            <View key={store.name} style={styles.storeRow}>
-              <View>
-                <Text style={styles.settingLabel}>{store.name}</Text>
-                <Text style={styles.settingHint}>{store.distance}</Text>
+        <View style={styles.tabRow}>
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === "settings" && styles.tabButtonActive]}
+            onPress={() => setActiveTab("settings")}
+            activeOpacity={0.85}
+          >
+            <Text style={[styles.tabButtonText, activeTab === "settings" && styles.tabButtonTextActive]}>
+              {t("profile.settingsTab")}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === "favorites" && styles.tabButtonActive]}
+            onPress={() => setActiveTab("favorites")}
+            activeOpacity={0.85}
+          >
+            <Text style={[styles.tabButtonText, activeTab === "favorites" && styles.tabButtonTextActive]}>
+              {t("profile.favoritesTab")}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {activeTab === "settings" ? (
+          <>
+            <View style={styles.sectionCard}>
+              <View style={styles.sectionTitleRow}>
+                <Store size={16} color={colors.primary600} />
+                <Text style={styles.sectionTitle}>{t("profile.preferredStores")}</Text>
               </View>
-              <Text style={styles.storeActive}>{t("profile.active")}</Text>
+              {preferredStores.map((store) => (
+                <View key={store.name} style={styles.storeRow}>
+                  <View>
+                    <Text style={styles.settingLabel}>{store.name}</Text>
+                  </View>
+                  <Text style={styles.storeActive}>{t("profile.active")}</Text>
+                </View>
+              ))}
             </View>
-          ))}
-        </View>
 
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionTitleRow}>
-            <Bell size={16} color={colors.primary600} />
-            <Text style={styles.sectionTitle}>{t("profile.notifications")}</Text>
-          </View>
-          <SettingRow
-            label={t("profile.priceAlerts")}
-            hint={t("profile.priceAlertsHint")}
-            value={priceAlerts}
-            onValueChange={setPriceAlerts}
-            colors={colors}
-          />
-          <SettingRow
-            label={t("profile.deals")}
-            hint={t("profile.dealsHint")}
-            value={dealNotifications}
-            onValueChange={setDealNotifications}
-            colors={colors}
-          />
-        </View>
+            <View style={styles.sectionCard}>
+              <View style={styles.sectionTitleRow}>
+                <Bell size={16} color={colors.primary600} />
+                <Text style={styles.sectionTitle}>{t("profile.notifications")}</Text>
+              </View>
+              <SettingRow
+                label={t("profile.priceAlerts")}
+                hint={t("profile.priceAlertsHint")}
+                value={priceAlerts}
+                onValueChange={setPriceAlerts}
+                colors={colors}
+              />
+              <SettingRow
+                label={t("profile.deals")}
+                hint={t("profile.dealsHint")}
+                value={dealNotifications}
+                onValueChange={setDealNotifications}
+                colors={colors}
+              />
+            </View>
 
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionTitleRow}>
-            <MapPin size={16} color={colors.primary600} />
-            <Text style={styles.sectionTitle}>{t("profile.privacy")}</Text>
-          </View>
-          <SettingRow
-            label={t("profile.locationServices")}
-            hint={t("profile.locationServicesHint")}
-            value={locationEnabled}
-            onValueChange={setLocationEnabled}
-            colors={colors}
-          />
-          <SettingRow
-            label={t("profile.darkMode")}
-            hint={t("profile.darkModeHint")}
-            value={isDark}
-            onValueChange={(value) => void setDarkMode(value)}
-            colors={colors}
-          />
-        </View>
+            <View style={styles.sectionCard}>
+              <View style={styles.sectionTitleRow}>
+                <MapPin size={16} color={colors.primary600} />
+                <Text style={styles.sectionTitle}>{t("profile.privacy")}</Text>
+              </View>
+              <SettingRow
+                label={t("profile.locationServices")}
+                hint={t("profile.locationServicesHint")}
+                value={locationEnabled}
+                onValueChange={setLocationEnabled}
+                colors={colors}
+              />
+              <SettingRow
+                label={t("profile.darkMode")}
+                hint={t("profile.darkModeHint")}
+                value={isDark}
+                onValueChange={(value) => void setDarkMode(value)}
+                colors={colors}
+              />
+            </View>
 
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionTitleRow}>
-            <UserIcon size={16} color={colors.primary600} />
-            <Text style={styles.sectionTitle}>{t("profile.language")}</Text>
-          </View>
-          <Text style={styles.settingHint}>{t("profile.languageHint")}</Text>
-          <View style={styles.languageRow}>
-            <TouchableOpacity
-              style={[styles.languageButton, language === "pt" && styles.languageButtonActive]}
-              onPress={() => void setLanguage("pt")}
-              activeOpacity={0.85}
-            >
-              <Text style={[styles.languageButtonText, language === "pt" && styles.languageButtonTextActive]}>{t("profile.portuguese")}</Text>
+            <View style={styles.sectionCard}>
+              <View style={styles.sectionTitleRow}>
+                <UserIcon size={16} color={colors.primary600} />
+                <Text style={styles.sectionTitle}>{t("profile.language")}</Text>
+              </View>
+              <Text style={styles.settingHint}>{t("profile.languageHint")}</Text>
+              <View style={styles.languageRow}>
+                <TouchableOpacity
+                  style={[styles.languageButton, language === "pt" && styles.languageButtonActive]}
+                  onPress={() => void setLanguage("pt")}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.languageButtonText, language === "pt" && styles.languageButtonTextActive]}>{t("profile.portuguese")}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.languageButton, language === "en" && styles.languageButtonActive]}
+                  onPress={() => void setLanguage("en")}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.languageButtonText, language === "en" && styles.languageButtonTextActive]}>{t("profile.english")}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.sectionCard}>
+              <View style={styles.simpleRow}>
+                <Shield size={16} color={colors.gray600} />
+                <Text style={styles.settingLabel}>{t("profile.privacyPolicy")}</Text>
+              </View>
+              <View style={styles.simpleRow}>
+                <Moon size={16} color={colors.gray600} />
+                <Text style={styles.settingLabel}>{t("profile.appearance")}</Text>
+              </View>
+            </View>
+
+            <TouchableOpacity style={styles.logoutButton} onPress={onLogout} activeOpacity={0.85}>
+              <LogOut size={16} color={colors.error500} />
+              <Text style={styles.logoutText}>{t("profile.signOut")}</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.languageButton, language === "en" && styles.languageButtonActive]}
-              onPress={() => void setLanguage("en")}
-              activeOpacity={0.85}
-            >
-              <Text style={[styles.languageButtonText, language === "en" && styles.languageButtonTextActive]}>{t("profile.english")}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+          </>
+        ) : (
+          <View style={styles.sectionCard}>
+            <View style={styles.favoritesHeader}>
+              <View style={styles.sectionTitleRow}>
+                <Star size={16} color="#F59E0B" fill="#F59E0B" />
+                <Text style={styles.sectionTitle}>{t("profile.favoriteItemsTitle")}</Text>
+              </View>
+              <TouchableOpacity style={styles.reloadButton} onPress={() => void onReloadFavorites()} activeOpacity={0.85}>
+                <RotateCcw size={14} color={colors.gray600} />
+                <Text style={styles.reloadButtonText}>{t("profile.reloadFavorites")}</Text>
+              </TouchableOpacity>
+            </View>
 
-        <View style={styles.sectionCard}>
-          <View style={styles.simpleRow}>
-            <Shield size={16} color={colors.gray600} />
-            <Text style={styles.settingLabel}>{t("profile.privacyPolicy")}</Text>
-          </View>
-          <View style={styles.simpleRow}>
-            <Moon size={16} color={colors.gray600} />
-            <Text style={styles.settingLabel}>{t("profile.appearance")}</Text>
-          </View>
-        </View>
+            {favoritesLoading ? (
+              <View style={styles.favoritesStateRow}>
+                <Loader size={16} color={colors.gray400} />
+                <Text style={styles.settingHint}>{t("profile.loadingFavorites")}</Text>
+              </View>
+            ) : favoritesError ? (
+              <Text style={styles.errorText}>{favoritesError}</Text>
+            ) : favoriteProducts.length === 0 ? (
+              <Text style={styles.settingHint}>{t("profile.noFavorites")}</Text>
+            ) : (
+              <View style={styles.favoritesList}>
+                {favoriteProducts.map((product) => {
+                  const imageSource = getProductImage(product);
 
-        <TouchableOpacity style={styles.logoutButton} onPress={onLogout} activeOpacity={0.85}>
-          <LogOut size={16} color={colors.error500} />
-          <Text style={styles.logoutText}>{t("profile.signOut")}</Text>
-        </TouchableOpacity>
+                  return (
+                    <View key={product.id} style={styles.favoriteItemRow}>
+                      <View style={styles.favoriteImageBox}>
+                        {imageSource ? (
+                          <Image source={imageSource} style={styles.favoriteImage} resizeMode="cover" />
+                        ) : (
+                          <Text style={styles.favoriteFallback}>{product.emoji || "P"}</Text>
+                        )}
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.settingLabel}>{product.name}</Text>
+                      </View>
+                      <Star size={16} color="#F59E0B" fill="#F59E0B" />
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+        )}
       </View>
     </ScrollView>
   );
+}
+
+function getProductImage(product: Product) {
+  const raw = product.image?.trim();
+  if (raw && /^https?:\/\//i.test(raw)) return { uri: raw };
+  return getCategoryImage(product.image, product.categoryId);
 }
 
 function SettingRow({
@@ -285,6 +379,11 @@ function createStyles(colors: ReturnType<typeof useTheme>["colors"], isDark: boo
   },
   statValue: { fontSize: Typography["2xl"], fontWeight: "800", color: colors.gray900 },
   statLabel: { fontSize: Typography.sm, color: colors.gray500, marginTop: 2 },
+  tabRow: { flexDirection: "row", gap: 10, backgroundColor: colors.gray100, padding: 4, borderRadius: Radii["2xl"] },
+  tabButton: { flex: 1, borderRadius: Radii.xl, paddingVertical: 10, alignItems: "center" },
+  tabButtonActive: { backgroundColor: colors.surface },
+  tabButtonText: { fontSize: Typography.sm, fontWeight: "700", color: colors.gray500 },
+  tabButtonTextActive: { color: colors.gray900 },
   sectionCard: { backgroundColor: colors.surface, borderRadius: Radii["2xl"], padding: 16, gap: 14 },
   sectionTitleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   sectionTitle: { fontSize: Typography.md, fontWeight: "700", color: colors.gray900 },
@@ -299,6 +398,16 @@ function createStyles(colors: ReturnType<typeof useTheme>["colors"], isDark: boo
   languageButtonText: { fontSize: Typography.sm, fontWeight: "700", color: colors.gray700 },
   languageButtonTextActive: { color: colors.surface },
   simpleRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  favoritesHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  reloadButton: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 8, borderRadius: Radii.xl, backgroundColor: colors.gray100 },
+  reloadButtonText: { fontSize: Typography.xs, fontWeight: "700", color: colors.gray600 },
+  favoritesStateRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  favoritesList: { gap: 10 },
+  favoriteItemRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 12, borderRadius: Radii.xl, backgroundColor: colors.gray50 },
+  favoriteImageBox: { width: 44, height: 44, borderRadius: Radii.xl, backgroundColor: colors.surface, overflow: "hidden", alignItems: "center", justifyContent: "center" },
+  favoriteImage: { width: "100%", height: "100%" },
+  favoriteFallback: { fontSize: 18, fontWeight: "700", color: colors.gray900 },
+  errorText: { fontSize: Typography.sm, fontWeight: "600", color: colors.error500 },
   logoutButton: {
     height: 50,
     borderRadius: Radii["2xl"],

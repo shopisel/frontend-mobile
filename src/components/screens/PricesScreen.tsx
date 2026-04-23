@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { ArrowUpDown, Loader, MapPin, Navigation, Search, Tag } from "lucide-react-native";
+import { ArrowUpDown, Loader, MapPin, Navigation, Search, Star, Tag } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { usePrices } from "../../api/usePrices";
@@ -17,7 +17,12 @@ type StoreRow = {
   price: number;
 };
 
-export function PricesScreen() {
+type PricesScreenProps = {
+  favoriteProductIds: string[];
+  onToggleFavorite: (product: Product) => Promise<void>;
+};
+
+export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScreenProps) {
   const insets = useSafeAreaInsets();
   const { t, i18n } = useTranslation();
   const { colors } = useTheme();
@@ -39,6 +44,7 @@ export function PricesScreen() {
   const [isLoadingSubCats, setIsLoadingSubCats] = useState(false);
   const [isLoadingProducts, setIsLoadingProducts] = useState(false);
   const [isLoadingStores, setIsLoadingStores] = useState(false);
+  const [favoritePendingId, setFavoritePendingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -253,10 +259,23 @@ export function PricesScreen() {
     return sortedStores[sortedStores.length - 1].price - sortedStores[0].price;
   }, [sortedStores]);
 
+  const selectedProductFavorite = selectedProduct ? favoriteProductIds.includes(selectedProduct.id) : false;
+
   const getProductImageSource = (product: Product) => {
     const raw = product.image?.trim();
     if (raw && /^https?:\/\//i.test(raw)) return { uri: raw };
     return getCategoryImage(product.image, product.categoryId);
+  };
+
+  const handleToggleFavorite = async (product: Product) => {
+    setFavoritePendingId(product.id);
+    try {
+      await onToggleFavorite(product);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setFavoritePendingId(null);
+    }
   };
 
   const emptyProductsMessage = searchQuery.trim()
@@ -350,6 +369,7 @@ export function PricesScreen() {
               {products.map((product) => {
                 const isSelected = selectedProduct?.id === product.id;
                 const imageSource = getProductImageSource(product);
+                const isFavorite = favoriteProductIds.includes(product.id);
 
                 return (
                   <TouchableOpacity
@@ -369,6 +389,7 @@ export function PricesScreen() {
                       <Text style={[styles.productName, isSelected && styles.productNameActive]} numberOfLines={2}>
                         {product.name}
                       </Text>
+                      {isFavorite ? <Star size={14} color="#F59E0B" fill="#F59E0B" /> : null}
                     </View>
                   </TouchableOpacity>
                 );
@@ -394,6 +415,22 @@ export function PricesScreen() {
                   <Text style={styles.detailCategory}>{selectedSubCat?.name ?? selectedMainCat?.name ?? t("common.all")}</Text>
                   <Text style={styles.detailName}>{selectedProduct.name}</Text>
                 </View>
+                <TouchableOpacity
+                  style={styles.favoriteButton}
+                  onPress={() => void handleToggleFavorite(selectedProduct)}
+                  activeOpacity={0.85}
+                  disabled={favoritePendingId === selectedProduct.id}
+                >
+                  {favoritePendingId === selectedProduct.id ? (
+                    <Loader size={18} color={colors.surface} />
+                  ) : (
+                    <Star
+                      size={20}
+                      color={selectedProductFavorite ? "#FCD34D" : "#E0E7FF"}
+                      fill={selectedProductFavorite ? "#FCD34D" : "transparent"}
+                    />
+                  )}
+                </TouchableOpacity>
               </View>
 
               <View style={styles.detailStatsRow}>
@@ -535,6 +572,14 @@ function createStyles(colors: ReturnType<typeof useTheme>["colors"]) {
   detailFallback: { fontSize: 16, fontWeight: "800", color: colors.surface },
   detailCategory: { fontSize: 12, color: "#C7D2FE" },
   detailName: { fontSize: 16, fontWeight: "700", color: colors.surface },
+  favoriteButton: {
+    width: 40,
+    height: 40,
+    borderRadius: Radii.xl,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   detailStatsRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 16 },
   detailLabel: { fontSize: 11, color: "#C7D2FE" },
   detailPrice: { fontSize: 26, fontWeight: "800", color: colors.surface },

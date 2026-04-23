@@ -4,6 +4,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import Toast from "react-native-toast-message";
 import { AuthProvider } from "../src/auth/AuthProvider";
+import { FavoritesProvider } from "../src/favorites/FavoritesProvider";
 import "../src/i18n";
 import { LanguageProvider } from "../src/i18n/LanguageProvider";
 import { ThemeProvider, useTheme } from "../src/theme/ThemeProvider";
@@ -15,7 +16,9 @@ export default function RootLayout() {
         <ThemeProvider>
           <LanguageProvider>
             <AuthProvider>
-              <AppShell />
+              <FavoritesProvider>
+                <AppShell />
+              </FavoritesProvider>
             </AuthProvider>
           </LanguageProvider>
         </ThemeProvider>

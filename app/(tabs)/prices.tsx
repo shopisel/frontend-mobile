@@ -1,5 +1,8 @@
 import { PricesScreen } from "../../src/components/screens/PricesScreen";
+import { useFavorites } from "../../src/favorites/FavoritesProvider";
 
 export default function PricesTab() {
-  return <PricesScreen />;
+  const { favoriteProductIds, toggleFavorite } = useFavorites();
+
+  return <PricesScreen favoriteProductIds={favoriteProductIds} onToggleFavorite={toggleFavorite} />;
 }
