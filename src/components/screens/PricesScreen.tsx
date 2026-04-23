@@ -15,6 +15,9 @@ type StoreRow = {
   id: string;
   name: string;
   price: number;
+  originalPrice?: number;
+  discountPercent?: number;
+  saleDate?: string;
 };
 
 type PricesScreenProps = {
@@ -223,11 +226,17 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScr
         const storeIds = Array.from(new Set((prices ?? []).map((price) => price.storeId)));
         const stores = storeIds.length ? await getStores({ ids: storeIds.join(",") }) : [];
         const storeNames = new Map((stores ?? []).map((store) => [store.id, store.name] as const));
-        const rows: StoreRow[] = (prices ?? []).map((price) => ({
-          id: price.storeId,
-          name: storeNames.get(price.storeId) ?? price.storeId,
-          price: price.price,
-        }));
+        const rows: StoreRow[] = (prices ?? []).map((price) => {
+          const hasSale = typeof price.sale === "number" && price.sale > 0 && price.sale < price.price;
+          return {
+            id: price.storeId,
+            name: storeNames.get(price.storeId) ?? price.storeId,
+            price: hasSale ? price.sale as number : price.price,
+            originalPrice: hasSale ? price.price : undefined,
+            discountPercent: hasSale ? Math.round(((price.price - (price.sale as number)) / price.price) * 100) : undefined,
+            saleDate: hasSale ? price.saleDate : undefined,
+          };
+        });
 
         if (cancelled) return;
         setStoreRows(rows);
@@ -258,6 +267,13 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScr
     if (sortedStores.length < 2) return 0;
     return sortedStores[sortedStores.length - 1].price - sortedStores[0].price;
   }, [sortedStores]);
+
+  const formatSaleDate = (value?: string) => {
+    if (!value) return null;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return value;
+    return parsed.toLocaleDateString("pt-PT");
+  };
 
   const selectedProductFavorite = selectedProduct ? favoriteProductIds.includes(selectedProduct.id) : false;
 
@@ -514,6 +530,15 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScr
                   </View>
                   <View style={{ alignItems: "flex-end" }}>
                     <Text style={[styles.storePrice, index === 0 && { color: colors.success500 }]}>{formatCurrency(store.price, i18n.language)}</Text>
+                    {typeof store.originalPrice === "number" && store.originalPrice > store.price ? (
+                      <Text style={styles.storeOriginalPrice}>{formatCurrency(store.originalPrice, i18n.language)}</Text>
+                    ) : null}
+                    {typeof store.discountPercent === "number" ? (
+                      <Text style={styles.storeDiscount}>-{store.discountPercent}%</Text>
+                    ) : null}
+                    {store.saleDate ? (
+                      <Text style={styles.storeSaleDate}>Validade: {formatSaleDate(store.saleDate)}</Text>
+                    ) : null}
                     {index > 0 && sortedStores[0] && (
                       <Text style={styles.storeExtra}>{t("prices.more", { amount: formatCurrency(store.price - sortedStores[0].price, i18n.language) })}</Text>
                     )}
@@ -609,6 +634,9 @@ function createStyles(colors: ReturnType<typeof useTheme>["colors"]) {
   rankTextActive: { color: colors.surface },
   storeName: { fontSize: 14, fontWeight: "700", color: colors.gray900 },
   storePrice: { fontSize: 20, fontWeight: "800", color: colors.gray900 },
+  storeOriginalPrice: { fontSize: 11, color: colors.gray400, textDecorationLine: "line-through", marginTop: 2 },
+  storeDiscount: { fontSize: 11, fontWeight: "700", color: colors.success500, marginTop: 1 },
+  storeSaleDate: { fontSize: 11, color: colors.gray500, marginTop: 1 },
   storeExtra: { fontSize: 11, color: "#F87171" },
   });
 }

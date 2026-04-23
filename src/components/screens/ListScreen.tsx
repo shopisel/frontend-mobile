@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLists, type ListItemRequest, type ListItemResponse, type ListResponse } from "../../api/useLists";
 import { useProducts, type Product } from "../../api/useProducts";
 import { useStores, type StoreResponse } from "../../api/useStores";
+import { calculateDiscountPercentage, usePrices } from "../../api/usePrices";
 import { AddProductModal, type AddListItemPayload } from "../modals/AddProductModal";
 import { Colors } from "../../styles/colors";
 import { Radii } from "../../styles/typography";
@@ -17,6 +18,10 @@ interface EnrichedItem extends ListItemResponse {
   categoryId?: string;
   emoji: string;
   storeName: string;
+  unitPrice: number;
+  originalUnitPrice?: number;
+  discountPercent?: number;
+  saleDate?: string;
 }
 
 export function ListScreen() {
@@ -28,6 +33,7 @@ export function ListScreen() {
   const { getList, updateList } = useLists();
   const { getProductsByIds } = useProducts();
   const { getStores } = useStores();
+  const { getPrices } = usePrices();
 
   const [listDetails, setListDetails] = useState<ListResponse | null>(null);
   const [items, setItems] = useState<EnrichedItem[]>([]);
@@ -47,6 +53,7 @@ export function ListScreen() {
 
       const productsMap: Record<string, Product> = {};
       const storesMap: Record<string, StoreResponse> = {};
+      const priceByProductStore = new Map<string, { unitPrice: number; originalUnitPrice?: number; discountPercent?: number; saleDate?: string }>();
 
       if (productIds.length) {
         const products = await getProductsByIds(productIds).catch(() => []);
@@ -62,6 +69,37 @@ export function ListScreen() {
         });
       }
 
+      const uniqueKeys = [...new Set(rawItems.map((item) => `${item.productId}::${item.storeId}`))];
+      await Promise.all(
+        uniqueKeys.map(async (key) => {
+          const [productId, storeId] = key.split("::");
+          try {
+            const prices = await getPrices(productId, storeId);
+            const best = prices.reduce((acc, curr) => {
+              const accCurrent = typeof acc.sale === "number" && acc.sale > 0 ? acc.sale : acc.price;
+              const currCurrent = typeof curr.sale === "number" && curr.sale > 0 ? curr.sale : curr.price;
+              return currCurrent < accCurrent ? curr : acc;
+            }, prices[0]);
+
+            if (!best) return;
+
+            const hasSale = typeof best.sale === "number" && best.sale > 0 && best.sale < best.price;
+            const unitPrice = hasSale ? best.sale as number : best.price;
+            const originalUnitPrice = hasSale ? best.price : undefined;
+            const discountPercent = hasSale ? calculateDiscountPercentage(best.price, best.sale as number) : undefined;
+
+            priceByProductStore.set(key, {
+              unitPrice,
+              originalUnitPrice,
+              discountPercent,
+              saleDate: hasSale ? best.saleDate : undefined,
+            });
+          } catch {
+            priceByProductStore.set(key, { unitPrice: 0 });
+          }
+        }),
+      );
+
       const enriched: EnrichedItem[] = rawItems.map((item) => ({
         ...item,
         name: productsMap[item.productId]?.name ?? "Unknown Product",
@@ -69,6 +107,10 @@ export function ListScreen() {
         categoryId: productsMap[item.productId]?.categoryId,
         emoji: productsMap[item.productId]?.emoji ?? "PK",
         storeName: storesMap[item.storeId]?.name ?? "Unknown Store",
+        unitPrice: priceByProductStore.get(`${item.productId}::${item.storeId}`)?.unitPrice ?? item.price,
+        originalUnitPrice: priceByProductStore.get(`${item.productId}::${item.storeId}`)?.originalUnitPrice,
+        discountPercent: priceByProductStore.get(`${item.productId}::${item.storeId}`)?.discountPercent,
+        saleDate: priceByProductStore.get(`${item.productId}::${item.storeId}`)?.saleDate,
       }));
 
       setItems(enriched);
@@ -77,7 +119,7 @@ export function ListScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [getList, getProductsByIds, getStores]);
+  }, [getList, getPrices, getProductsByIds, getStores]);
 
   useEffect(() => {
     if (listId) void loadItems(listId);
@@ -88,7 +130,7 @@ export function ListScreen() {
       productId: item.productId,
       storeId: item.storeId,
       quantity: item.quantity,
-      price: item.price,
+      price: item.unitPrice,
       checked: item.checked,
     }));
 
@@ -120,6 +162,13 @@ export function ListScreen() {
         storeId: item.storeId,
         quantity: item.quantity,
         price: item.price,
+        unitPrice: item.price,
+        originalUnitPrice: item.originalPrice,
+        discountPercent:
+          typeof item.originalPrice === "number" && item.originalPrice > item.price
+            ? calculateDiscountPercentage(item.originalPrice, item.price)
+            : undefined,
+        saleDate: item.saleDate,
         checked: item.checked,
         name: item.name,
         image: item.image,
@@ -137,12 +186,19 @@ export function ListScreen() {
     searchInput.trim() ? items.filter((item) => item.name.toLowerCase().includes(searchInput.toLowerCase())) : items
   ), [items, searchInput]);
 
-  const total = items.filter((item) => !item.checked).reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const total = items.filter((item) => !item.checked).reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
   const checkedCount = items.filter((item) => item.checked).length;
   const getItemImageSource = (item: EnrichedItem) => {
     const raw = item.image?.trim();
     if (raw && /^https?:\/\//i.test(raw)) return { uri: raw };
     return getCategoryImage(item.image, item.categoryId ?? item.name);
+  };
+
+  const formatSaleDate = (value?: string) => {
+    if (!value) return null;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return value;
+    return parsed.toLocaleDateString("pt-PT");
   };
 
   return (
@@ -200,8 +256,21 @@ export function ListScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={[styles.itemName, item.checked && styles.itemNameChecked]} numberOfLines={1}>{item.name}</Text>
                 <Text style={styles.itemSub}>{item.quantity} un | {item.storeName}</Text>
+                {item.saleDate ? (
+                  <Text style={styles.saleDateText}>Validade: {formatSaleDate(item.saleDate)}</Text>
+                ) : null}
               </View>
-              <Text style={[styles.itemPrice, item.checked && { color: Colors.gray400 }]}>EUR {(item.price * item.quantity).toFixed(2)}</Text>
+              <View style={styles.priceColumn}>
+                <Text style={[styles.itemPrice, item.checked && { color: Colors.gray400 }]}>EUR {(item.unitPrice * item.quantity).toFixed(2)}</Text>
+                {typeof item.originalUnitPrice === "number" && item.originalUnitPrice > item.unitPrice ? (
+                  <>
+                    <Text style={styles.originalPrice}>EUR {(item.originalUnitPrice * item.quantity).toFixed(2)}</Text>
+                    {typeof item.discountPercent === "number" ? (
+                      <Text style={styles.discountText}>-{item.discountPercent}%</Text>
+                    ) : null}
+                  </>
+                ) : null}
+              </View>
               <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDelete(item.id)}>
                 <Trash2 size={14} color="#F87171" />
               </TouchableOpacity>
@@ -255,7 +324,11 @@ const styles = StyleSheet.create({
   itemName: { fontSize: 14, fontWeight: "600", color: Colors.gray900 },
   itemNameChecked: { textDecorationLine: "line-through", color: Colors.gray400 },
   itemSub: { fontSize: 12, color: Colors.gray400 },
+  saleDateText: { fontSize: 11, color: Colors.gray500, marginTop: 2 },
+  priceColumn: { alignItems: "flex-end", minWidth: 68 },
   itemPrice: { fontSize: 14, fontWeight: "700", color: Colors.success500 },
+  originalPrice: { fontSize: 11, color: Colors.gray400, textDecorationLine: "line-through", marginTop: 2 },
+  discountText: { fontSize: 11, fontWeight: "700", color: Colors.success500, marginTop: 1 },
   deleteBtn: { width: 28, height: 28, borderRadius: 14, backgroundColor: "#FEF2F2", alignItems: "center", justifyContent: "center" },
   checkCircle: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: Colors.gray300, alignItems: "center", justifyContent: "center" },
   checkCircleChecked: { borderColor: Colors.success500, backgroundColor: Colors.success500 },

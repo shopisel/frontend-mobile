@@ -35,6 +35,8 @@ export type AddListItemPayload = {
   storeId: string;
   quantity: number;
   price: number;
+  originalPrice?: number;
+  saleDate?: string;
   checked: boolean;
   name: string;
   image?: string;
@@ -134,7 +136,7 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
   const [loadingCats, setLoadingCats] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [stores, setStores] = useState<StoreResponse[]>([]);
-  const [priceByStore, setPriceByStore] = useState<Record<string, number>>({});
+  const [pricesByStore, setPricesByStore] = useState<Record<string, { price: number; originalPrice?: number; saleDate?: string }>>({});
   const [loadingStores, setLoadingStores] = useState(false);
   const [addedCount, setAddedCount] = useState(0);
 
@@ -151,7 +153,7 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
       setSelectedSubCat(null);
       setSelectedProduct(null);
       setStores([]);
-      setPriceByStore({});
+      setPricesByStore({});
       setAddedCount(0);
     }
   }, [visible]);
@@ -220,7 +222,7 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
   useEffect(() => {
     if (!selectedProduct) {
       setStores([]);
-      setPriceByStore({});
+      setPricesByStore({});
       return;
     }
 
@@ -229,11 +231,16 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
       try {
         const prices = await getPrices(selectedProduct.id);
         const storeIds = [...new Set(prices.map((price) => price.storeId))];
-        const nextPriceMap = prices.reduce<Record<string, number>>((acc, price) => {
-          acc[price.storeId] = price.price;
+        const nextPriceMap = prices.reduce<Record<string, { price: number; originalPrice?: number; saleDate?: string }>>((acc, price) => {
+          const hasSale = typeof price.sale === "number" && price.sale > 0 && price.sale < price.price;
+          acc[price.storeId] = {
+            price: hasSale ? price.sale as number : price.price,
+            originalPrice: hasSale ? price.price : undefined,
+            saleDate: hasSale ? price.saleDate : undefined,
+          };
           return acc;
         }, {});
-        setPriceByStore(nextPriceMap);
+        setPricesByStore(nextPriceMap);
         if (!storeIds.length) {
           setStores([]);
           return;
@@ -249,8 +256,8 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
   }, [getPrices, getStores, selectedProduct]);
 
   const sortedStores = useMemo(
-    () => [...stores].sort((a, b) => (priceByStore[a.id] ?? Infinity) - (priceByStore[b.id] ?? Infinity)),
-    [priceByStore, stores],
+    () => [...stores].sort((a, b) => (pricesByStore[a.id]?.price ?? Infinity) - (pricesByStore[b.id]?.price ?? Infinity)),
+    [pricesByStore, stores],
   );
 
   const handleSelectStore = (store: StoreResponse) => {
@@ -260,7 +267,9 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
       productId: selectedProduct.id,
       storeId: store.id,
       quantity: 1,
-      price: priceByStore[store.id] ?? 0,
+      price: pricesByStore[store.id]?.price ?? 0,
+      originalPrice: pricesByStore[store.id]?.originalPrice,
+      saleDate: pricesByStore[store.id]?.saleDate,
       checked: false,
       name: selectedProduct.name,
       image: selectedProduct.image,
@@ -347,7 +356,14 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
                       <Text style={styles.storeName}>{store.name}</Text>
                       <Text style={styles.storeSub}>{index === 0 ? t("addProduct.bestPrice") : t("addProduct.priceAvailable")}</Text>
                     </View>
-                    <Text style={styles.storePrice}>{formatCurrency(priceByStore[store.id] ?? 0, i18n.language)}</Text>
+                    <View style={{ alignItems: "flex-end" }}>
+                      <Text style={styles.storePrice}>{formatCurrency(pricesByStore[store.id]?.price ?? 0, i18n.language)}</Text>
+                      {typeof pricesByStore[store.id]?.originalPrice === "number" ? (
+                        <Text style={styles.storeOriginalPrice}>
+                          {formatCurrency(pricesByStore[store.id]?.originalPrice ?? 0, i18n.language)}
+                        </Text>
+                      ) : null}
+                    </View>
                   </TouchableOpacity>
                 ))
               ) : (
@@ -452,6 +468,7 @@ const styles = StyleSheet.create({
   storeName: { fontSize: Typography.md, fontWeight: "700", color: Colors.gray900 },
   storeSub: { fontSize: Typography.sm, color: Colors.gray500, marginTop: 2 },
   storePrice: { fontSize: Typography.lg, fontWeight: "800", color: Colors.success500 },
+  storeOriginalPrice: { fontSize: Typography.sm, color: Colors.gray400, textDecorationLine: "line-through", marginTop: 2 },
 });
 
 const methodStyles = StyleSheet.create({

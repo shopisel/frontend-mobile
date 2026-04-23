@@ -19,6 +19,8 @@ type ListPreviewItem = {
   name: string;
   qty: string;
   price: number;
+  originalPrice?: number;
+  discountPercent?: number;
   store: string;
   imageSource: ReturnType<typeof getCategoryImage>;
   badge: string;
@@ -44,6 +46,14 @@ type AlertItem = {
   store: string;
 };
 
+type FavoritePreviewItem = {
+  product: Product;
+  bestPrice: number;
+  originalPrice?: number;
+  discountPercent?: number;
+  storeName?: string;
+};
+
 interface HomeScreenProps {
   onNavigate: (tab: string) => void;
   onOpenList?: (listId: string) => void;
@@ -57,16 +67,19 @@ export function HomeScreen({ onNavigate, onOpenList, favoriteProducts, favorites
   const { user } = useAuth();
   const { t, i18n } = useTranslation();
   const { colors } = useTheme();
-  const { getLists } = useLists();
+  const { getLists, getList } = useLists();
   const { getProductsByIds } = useProducts();
   const { getStores } = useStores();
   const { getPrices } = usePrices();
   const [quickAdd, setQuickAdd] = useState("");
   const [lists, setLists] = useState<ListResponse[]>([]);
+  const [latestList, setLatestList] = useState<ListResponse | null>(null);
+  const [latestListItems, setLatestListItems] = useState<ListPreviewItem[]>([]);
   const [productsById, setProductsById] = useState<Record<string, Product>>({});
   const [storesById, setStoresById] = useState<Record<string, StoreResponse>>({});
   const [deals, setDeals] = useState<DealItem[]>([]);
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
+  const [favoritePreviewItems, setFavoritePreviewItems] = useState<FavoritePreviewItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -79,29 +92,12 @@ export function HomeScreen({ onNavigate, onOpenList, favoriteProducts, favorites
     .join("");
 
   const primaryList = useMemo(() => {
+    if (latestList) return latestList;
     if (!lists.length) return null;
     return [...lists].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
-  }, [lists]);
+  }, [latestList, lists]);
 
-  const listItems = useMemo<ListPreviewItem[]>(() => {
-    if (!primaryList) return [];
-
-    return (primaryList.items ?? []).slice(0, 3).map((item, index) => {
-      const product = productsById[item.productId];
-      const store = storesById[item.storeId];
-      const quantity = item.quantity ?? 0;
-
-      return {
-        id: item.id,
-        name: product?.name ?? t("common.unknownProduct"),
-        qty: `${quantity} ${t("lists.quantityUnit")}`,
-        price: item.price * quantity,
-        store: store?.name ?? t("common.unknownStore"),
-        imageSource: getCategoryImage(product?.image, product?.categoryId ?? product?.name),
-        badge: getBadge(product?.name),
-      };
-    });
-  }, [primaryList, productsById, storesById, t]);
+  const listItems = latestListItems;
 
   const totalItemsCount = useMemo(
     () => lists.reduce((sum, list) => sum + (list.items?.length ?? 0), 0),
@@ -113,7 +109,7 @@ export function HomeScreen({ onNavigate, onOpenList, favoriteProducts, favorites
     [alerts, i18n.language],
   );
 
-  const favoritePreview = useMemo(() => favoriteProducts.slice(0, 4), [favoriteProducts]);
+  const favoritePreview = useMemo(() => favoritePreviewItems.slice(0, 4), [favoritePreviewItems]);
 
   const loadHomeData = useCallback(async () => {
     setIsLoading(true);
@@ -124,7 +120,9 @@ export function HomeScreen({ onNavigate, onOpenList, favoriteProducts, favorites
       const normalizedLists = Array.isArray(nextLists) ? nextLists : [];
       setLists(normalizedLists);
 
-      const currentList = [...normalizedLists].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+      const latestListSummary = [...normalizedLists].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+      const currentList = latestListSummary?.id ? await getList(latestListSummary.id).catch(() => latestListSummary) : latestListSummary;
+      setLatestList(currentList ?? null);
       const currentItems = currentList?.items ?? [];
       const productIds = [...new Set(currentItems.map((item) => item.productId))];
       const storeIds = [...new Set(currentItems.map((item) => item.storeId))];
@@ -146,7 +144,55 @@ export function HomeScreen({ onNavigate, onOpenList, favoriteProducts, favorites
       setProductsById(nextProductsById);
       setStoresById(nextStoresById);
 
+      const enrichedPreview = await Promise.all(
+        currentItems.slice(0, 3).map(async (item) => {
+          const product = nextProductsById[item.productId];
+          const store = nextStoresById[item.storeId];
+          const quantity = typeof item.quantity === "number" ? item.quantity : Number(item.quantity ?? 0);
+          const safeQuantity = Number.isFinite(quantity) ? quantity : 0;
+
+          let unitPrice = typeof item.price === "number" ? item.price : Number(item.price ?? 0);
+          let originalPrice: number | undefined;
+          let discountPercent: number | undefined;
+
+          try {
+            const prices = await getPrices(item.productId, item.storeId);
+            const best = prices.reduce((acc, curr) => {
+              const accCurrent = typeof acc.sale === "number" && acc.sale > 0 ? acc.sale : acc.price;
+              const currCurrent = typeof curr.sale === "number" && curr.sale > 0 ? curr.sale : curr.price;
+              return currCurrent < accCurrent ? curr : acc;
+            }, prices[0]);
+
+            if (best) {
+              const hasSale = typeof best.sale === "number" && best.sale > 0 && best.sale < best.price;
+              unitPrice = hasSale ? best.sale as number : best.price;
+              originalPrice = hasSale ? best.price : undefined;
+              discountPercent = hasSale ? Math.round(((best.price - (best.sale as number)) / best.price) * 100) : undefined;
+            }
+          } catch {
+            // Keep fallback from list payload if price lookup fails.
+          }
+
+          const safeUnitPrice = Number.isFinite(unitPrice) ? unitPrice : 0;
+
+          return {
+            id: item.id,
+            name: product?.name ?? t("common.unknownProduct"),
+            qty: `${safeQuantity} ${t("lists.quantityUnit")}`,
+            price: safeUnitPrice * safeQuantity,
+            originalPrice: typeof originalPrice === "number" ? originalPrice * safeQuantity : undefined,
+            discountPercent,
+            store: store?.name ?? t("common.unknownStore"),
+            imageSource: getCategoryImage(product?.image, product?.categoryId ?? product?.name),
+            badge: getBadge(product?.name),
+          };
+        }),
+      );
+
+      setLatestListItems(enrichedPreview);
+
       if (!currentItems.length) {
+        setLatestListItems([]);
         setDeals([]);
         setAlerts([]);
         return;
@@ -213,6 +259,8 @@ export function HomeScreen({ onNavigate, onOpenList, favoriteProducts, favorites
     } catch (error) {
       console.error(error);
       setLists([]);
+      setLatestList(null);
+      setLatestListItems([]);
       setProductsById({});
       setStoresById({});
       setDeals([]);
@@ -221,12 +269,74 @@ export function HomeScreen({ onNavigate, onOpenList, favoriteProducts, favorites
     } finally {
       setIsLoading(false);
     }
-  }, [colors, getLists, getPrices, getProductsByIds, getStores, t]);
+  }, [colors, getList, getLists, getPrices, getProductsByIds, getStores, t]);
 
   useFocusEffect(
     useCallback(() => {
       void loadHomeData();
     }, [loadHomeData]),
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+
+      const loadFavoritePreview = async () => {
+        if (!favoriteProducts.length) {
+          if (active) setFavoritePreviewItems([]);
+          return;
+        }
+
+        const preview = await Promise.all(
+          favoriteProducts.map(async (product) => {
+            try {
+              const prices = await getPrices(product.id);
+              const validPrices = prices.filter((price) => typeof price.price === "number");
+              if (!validPrices.length) return null;
+
+              const best = validPrices.reduce((acc, curr) => {
+                const accCurrent = typeof acc.sale === "number" && acc.sale > 0 ? acc.sale : acc.price;
+                const currCurrent = typeof curr.sale === "number" && curr.sale > 0 ? curr.sale : curr.price;
+                return currCurrent < accCurrent ? curr : acc;
+              }, validPrices[0]);
+
+              const hasSale = typeof best.sale === "number" && best.sale > 0 && best.sale < best.price;
+              if (!hasSale) return null;
+
+              const bestPrice = hasSale ? best.sale as number : best.price;
+              const originalPrice = hasSale ? best.price : undefined;
+              const discountPercent = hasSale ? Math.round(((best.price - (best.sale as number)) / best.price) * 100) : undefined;
+              const stores = await getStores({ ids: best.storeId }).catch(() => []);
+
+              return {
+                product,
+                bestPrice,
+                originalPrice,
+                discountPercent,
+                storeName: stores?.[0]?.name,
+              } satisfies FavoritePreviewItem;
+            } catch {
+              return null;
+            }
+          }),
+        );
+
+        if (active) {
+          const filteredPreview = preview.reduce<FavoritePreviewItem[]>((acc, item) => {
+            if (item) acc.push(item);
+            return acc;
+          }, []);
+
+          setFavoritePreviewItems(filteredPreview.slice(0, 4));
+        }
+      };
+
+      void loadFavoritePreview();
+
+      return () => {
+        active = false;
+      };
+    }, [favoriteProducts, getPrices, getStores]),
   );
 
   const openPrimaryList = () => {
@@ -321,7 +431,17 @@ export function HomeScreen({ onNavigate, onOpenList, favoriteProducts, favorites
                     <Text style={styles.itemName}>{item.name}</Text>
                     <Text style={styles.itemSub}>{item.qty} | {item.store}</Text>
                   </View>
-                  <Text style={styles.itemPrice}>{formatCurrency(item.price, i18n.language)}</Text>
+                  <View style={styles.itemPriceColumn}>
+                    <Text style={styles.itemPrice}>{formatCurrency(item.price, i18n.language)}</Text>
+                    {typeof item.originalPrice === "number" && item.originalPrice > item.price ? (
+                      <>
+                        <Text style={styles.itemOriginalPrice}>{formatCurrency(item.originalPrice, i18n.language)}</Text>
+                        {typeof item.discountPercent === "number" ? (
+                          <Text style={styles.itemDiscount}>-{item.discountPercent}%</Text>
+                        ) : null}
+                      </>
+                    ) : null}
+                  </View>
                 </View>
               ))
             ) : (
@@ -352,22 +472,34 @@ export function HomeScreen({ onNavigate, onOpenList, favoriteProducts, favorites
                 <Text style={styles.emptyStateText}>{favoritesError}</Text>
               </View>
             ) : favoritePreview.length ? (
-              favoritePreview.map((product, idx) => {
-                const imageSource = getProductImage(product);
+              favoritePreview.map((item, idx) => {
+                const imageSource = getProductImage(item.product);
 
                 return (
-                  <View key={product.id} style={[styles.listRow, idx < favoritePreview.length - 1 && styles.listRowBorder]}>
+                  <View key={item.product.id} style={[styles.listRow, idx < favoritePreview.length - 1 && styles.listRowBorder]}>
                     <View style={styles.productImageBox}>
                       {imageSource ? (
                         <Image source={imageSource} style={styles.productImage} resizeMode="cover" />
                       ) : (
                         <View style={styles.emoji}>
-                          <Text style={styles.emojiText}>{getBadge(product.name)}</Text>
+                          <Text style={styles.emojiText}>{getBadge(item.product.name)}</Text>
                         </View>
                       )}
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.itemName}>{product.name}</Text>
+                      <Text style={styles.itemName}>{item.product.name}</Text>
+                      <Text style={styles.itemSub}>{item.storeName ?? t("common.unknownStore")}</Text>
+                    </View>
+                    <View style={styles.itemPriceColumn}>
+                      <Text style={styles.itemPrice}>{formatCurrency(item.bestPrice, i18n.language)}</Text>
+                      {typeof item.originalPrice === "number" && item.originalPrice > item.bestPrice ? (
+                        <>
+                          <Text style={styles.itemOriginalPrice}>{formatCurrency(item.originalPrice, i18n.language)}</Text>
+                          {typeof item.discountPercent === "number" ? (
+                            <Text style={styles.itemDiscount}>-{item.discountPercent}%</Text>
+                          ) : null}
+                        </>
+                      ) : null}
                     </View>
                     <Star size={16} color="#F59E0B" fill="#F59E0B" />
                   </View>
@@ -509,7 +641,10 @@ function createStyles(colors: ReturnType<typeof useTheme>["colors"]) {
     emojiText: { fontSize: 13, fontWeight: "700", color: colors.gray900 },
     itemName: { fontSize: 14, fontWeight: "600", color: colors.gray900 },
     itemSub: { fontSize: 12, color: colors.gray400 },
+    itemPriceColumn: { alignItems: "flex-end", minWidth: 68 },
     itemPrice: { fontSize: 14, fontWeight: "700", color: colors.success500 },
+    itemOriginalPrice: { fontSize: 11, color: colors.gray400, textDecorationLine: "line-through", marginTop: 2 },
+    itemDiscount: { fontSize: 11, fontWeight: "700", color: colors.success500, marginTop: 1 },
     dealCard: { width: 176, borderRadius: Radii["3xl"], padding: 16, flexShrink: 0, position: "relative", overflow: "hidden" },
     dealBadgeCode: { fontSize: 18, fontWeight: "800", color: colors.gray900, marginBottom: 6 },
     dealName: { fontSize: 13, fontWeight: "700", color: colors.gray900 },
