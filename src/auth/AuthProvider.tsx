@@ -17,6 +17,7 @@ WebBrowser.maybeCompleteAuthSession();
 
 const TOKEN_KEY = "shopisel_access_token";
 const REFRESH_KEY = "shopisel_refresh_token";
+const AUTH_REDIRECT_PATH = "auth";
 
 type AuthUser = {
   name?: string;
@@ -77,7 +78,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [configError, setConfigError] = useState<string | null>(null);
 
-  const redirectUri = AuthSession.makeRedirectUri({ scheme: "shopisel" });
+  const redirectUri = AuthSession.makeRedirectUri({ scheme: "shopisel", path: AUTH_REDIRECT_PATH });
   console.log("[AuthProvider] redirectUri:", redirectUri);
 
   const [authRequest, authResponse, promptAsync] = AuthSession.useAuthRequest(
