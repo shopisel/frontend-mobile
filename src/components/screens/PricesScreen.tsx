@@ -60,6 +60,17 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScr
   const [error, setError] = useState<string | null>(null);
   const styles = useMemo(() => createStyles(colors), [colors]);
 
+  const getFallbackStoreName = (storeId: string) => {
+    switch (storeId) {
+      case "store-1":
+        return "Continente";
+      case "store-2":
+        return "Pingo Doce";
+      default:
+        return t("common.unknownStore");
+    }
+  };
+
   const toRadians = (value: number) => (value * Math.PI) / 180;
 
   const calculateDistanceKm = (
@@ -311,24 +322,31 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScr
           return acc;
         }, {});
 
-        const rows: StoreRow[] = (prices ?? []).map((price) => {
+        const rows: StoreRow[] = (prices ?? []).flatMap((price) => {
           const hasSale = typeof price.sale === "number" && price.sale > 0 && price.sale < price.price;
           const store = storesById.get(price.storeId);
           const candidateBranches = store?.brand ? branchesByBrand[store.brand] ?? [] : [];
-          const nearestBranch = userLocation
-            ? candidateBranches
-                .filter((candidate) => typeof candidate.latitude === "number" && typeof candidate.longitude === "number")
-                .sort((left, right) => {
-                  const leftDistance = calculateDistanceKm(userLocation.latitude, userLocation.longitude, left.latitude!, left.longitude!);
-                  const rightDistance = calculateDistanceKm(userLocation.latitude, userLocation.longitude, right.latitude!, right.longitude!);
-                  return leftDistance - rightDistance;
-                })[0]
-            : undefined;
-          const displayStore = nearestBranch ?? store;
 
-          return {
-            id: displayStore?.id ?? price.storeId,
-            name: displayStore?.name ?? store?.name ?? price.storeId,
+          const orderedBranches = [...candidateBranches].sort((left, right) => {
+            const leftHasCoordinates = typeof left.latitude === "number" && typeof left.longitude === "number";
+            const rightHasCoordinates = typeof right.latitude === "number" && typeof right.longitude === "number";
+
+            if (userLocation && leftHasCoordinates && rightHasCoordinates) {
+              const leftDistance = calculateDistanceKm(userLocation.latitude, userLocation.longitude, left.latitude!, left.longitude!);
+              const rightDistance = calculateDistanceKm(userLocation.latitude, userLocation.longitude, right.latitude!, right.longitude!);
+              return leftDistance - rightDistance;
+            }
+
+            if (leftHasCoordinates && !rightHasCoordinates) return -1;
+            if (!leftHasCoordinates && rightHasCoordinates) return 1;
+            return left.name.localeCompare(right.name);
+          });
+
+          const displayStores = orderedBranches.length > 0 ? orderedBranches.slice(0, 3) : [store].filter(Boolean);
+
+          return displayStores.map((displayStore, index) => ({
+            id: `${price.storeId}-${displayStore?.id ?? "fallback"}-${index}`,
+            name: displayStore?.name ?? store?.name ?? getFallbackStoreName(price.storeId),
             brand: store?.brand,
             address: displayStore?.address,
             city: displayStore?.city,
@@ -340,7 +358,7 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScr
             originalPrice: hasSale ? price.price : undefined,
             discountPercent: hasSale ? Math.round(((price.price - (price.sale as number)) / price.price) * 100) : undefined,
             saleDate: hasSale ? price.saleDate : undefined,
-          };
+          }));
         });
 
         if (cancelled) return;
@@ -710,7 +728,10 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScr
             <Text style={styles.emptyStateText}>{selectedProduct ? t("prices.noPrices") : t("prices.selectProductToSeePrices")}</Text>
           ) : (
             sortedStores.map((store, index) => (
-              <View key={`${selectedProduct?.id ?? "none"}-${store.id}`} style={styles.storeCard}>
+              <View
+                key={`${selectedProduct?.id ?? "none"}-${store.id}`}
+                style={[styles.storeCard, index === 0 && styles.storeCardBest]}
+              >
                 <View style={styles.storeHeaderRow}>
                   <View style={styles.storeLeftRow}>
                     <View style={[styles.rankBadge, index === 0 && styles.rankBadgeActive]}>
@@ -739,9 +760,6 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScr
                     {store.saleDate ? (
                       <Text style={styles.storeSaleDate}>Validade: {formatSaleDate(store.saleDate)}</Text>
                     ) : null}
-                    {index > 0 && sortedStores[0] && (
-                      <Text style={styles.storeExtra}>{t("prices.more", { amount: formatCurrency(store.price - sortedStores[0].price, i18n.language) })}</Text>
-                    )}
                   </View>
                 </View>
               </View>
@@ -836,7 +854,8 @@ function createStyles(colors: ReturnType<typeof useTheme>["colors"]) {
   mapPin: { position: "absolute", paddingHorizontal: 8, paddingVertical: 4, borderRadius: Radii.lg, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 4, elevation: 4 },
   userPin: { position: "absolute", bottom: 12, right: 12, width: 32, height: 32, borderRadius: 16, backgroundColor: "#3B82F6", alignItems: "center", justifyContent: "center" },
   storesSection: { paddingHorizontal: 20, paddingBottom: 32, gap: 12 },
-  storeCard: { backgroundColor: colors.surface, borderRadius: Radii["2xl"], padding: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
+  storeCard: { backgroundColor: colors.surface, borderRadius: Radii["2xl"], padding: 16, borderWidth: 1, borderColor: colors.gray100, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
+  storeCardBest: { borderColor: "#D4AF37", borderWidth: 2, shadowColor: "#D4AF37", shadowOpacity: 0.12 },
   storeHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   storeLeftRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   rankBadge: { width: 32, height: 32, borderRadius: Radii.lg, backgroundColor: colors.gray100, alignItems: "center", justifyContent: "center" },
@@ -850,6 +869,5 @@ function createStyles(colors: ReturnType<typeof useTheme>["colors"]) {
   storeOriginalPrice: { fontSize: 11, color: colors.gray400, textDecorationLine: "line-through", marginTop: 2 },
   storeDiscount: { fontSize: 11, fontWeight: "700", color: colors.success500, marginTop: 1 },
   storeSaleDate: { fontSize: 11, color: colors.gray500, marginTop: 1 },
-  storeExtra: { fontSize: 11, color: "#F87171" },
   });
 }
