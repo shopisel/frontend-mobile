@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { ArrowUpDown, Loader, MapPin, Navigation, Search, Star, Tag } from "lucide-react-native";
+import * as Location from "expo-location";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { usePrices } from "../../api/usePrices";
@@ -14,7 +15,11 @@ import { useTheme } from "../../theme/ThemeProvider";
 type StoreRow = {
   id: string;
   name: string;
+  brand?: string;
+  address?: string;
+  city?: string;
   price: number;
+  distanceKm?: number;
   originalPrice?: number;
   discountPercent?: number;
   saleDate?: string;
@@ -29,7 +34,7 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScr
   const insets = useSafeAreaInsets();
   const { t, i18n } = useTranslation();
   const { colors } = useTheme();
-  const { searchProducts, getMainCategories, getSubCategories, getProductsByCategory } = useProducts();
+  const { searchProducts, getMainCategories, getSubCategories, getProductsByCategory, getRelatedProducts } = useProducts();
   const { getPrices } = usePrices();
   const { getStores } = useStores();
 
@@ -40,16 +45,40 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScr
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [storeRows, setStoreRows] = useState<StoreRow[]>([]);
+  const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<"price" | "distance">("price");
   const [mapView, setMapView] = useState(false);
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [isLoadingCats, setIsLoadingCats] = useState(false);
   const [isLoadingSubCats, setIsLoadingSubCats] = useState(false);
   const [isLoadingProducts, setIsLoadingProducts] = useState(false);
   const [isLoadingStores, setIsLoadingStores] = useState(false);
+  const [isLoadingRelatedProducts, setIsLoadingRelatedProducts] = useState(false);
+  const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const [favoritePendingId, setFavoritePendingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const styles = useMemo(() => createStyles(colors), [colors]);
+
+  const toRadians = (value: number) => (value * Math.PI) / 180;
+
+  const calculateDistanceKm = (
+    fromLatitude: number,
+    fromLongitude: number,
+    toLatitude: number,
+    toLongitude: number,
+  ) => {
+    const earthRadiusKm = 6371;
+    const deltaLatitude = toRadians(toLatitude - fromLatitude);
+    const deltaLongitude = toRadians(toLongitude - fromLongitude);
+    const a =
+      Math.sin(deltaLatitude / 2) ** 2 +
+      Math.cos(toRadians(fromLatitude)) *
+        Math.cos(toRadians(toLatitude)) *
+        Math.sin(deltaLongitude / 2) ** 2;
+
+    return 2 * earthRadiusKm * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  };
 
   const resetCategorySelection = () => {
     setSelectedMainCat(null);
@@ -80,6 +109,46 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScr
     if (searchQuery.trim()) setSearchQuery("");
     setSelectedSubCat(category);
   };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadUserLocation = async () => {
+      setIsLoadingLocation(true);
+      try {
+        const permission = await Location.requestForegroundPermissionsAsync();
+        if (cancelled) return;
+
+        if (permission.status !== "granted") {
+          setError(t("prices.locationDenied"));
+          return;
+        }
+
+        const currentPosition = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+
+        if (cancelled) return;
+
+        setUserLocation({
+          latitude: currentPosition.coords.latitude,
+          longitude: currentPosition.coords.longitude,
+        });
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : t("errors.requestFailed"));
+        }
+      } finally {
+        if (!cancelled) setIsLoadingLocation(false);
+      }
+    };
+
+    void loadUserLocation();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [t]);
 
   useEffect(() => {
     let cancelled = false;
@@ -202,6 +271,7 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScr
     if (!products.length) {
       setSelectedProduct(null);
       setStoreRows([]);
+      setRelatedProducts([]);
       return;
     }
 
@@ -213,6 +283,7 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScr
   useEffect(() => {
     if (!selectedProduct) {
       setStoreRows([]);
+      setRelatedProducts([]);
       return;
     }
 
@@ -225,13 +296,47 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScr
         const prices = await getPrices(selectedProduct.id);
         const storeIds = Array.from(new Set((prices ?? []).map((price) => price.storeId)));
         const stores = storeIds.length ? await getStores({ ids: storeIds.join(",") }) : [];
-        const storeNames = new Map((stores ?? []).map((store) => [store.id, store.name] as const));
+        const storesById = new Map((stores ?? []).map((store) => [store.id, store] as const));
+        const brandNames = Array.from(new Set(
+          (stores ?? [])
+            .map((store) => store.brand?.trim())
+            .filter((brand): brand is string => Boolean(brand)),
+        ));
+        const branchStores = brandNames.length ? await getStores({ brands: brandNames.join(",") }) : [];
+
+        const branchesByBrand = branchStores.reduce<Record<string, typeof branchStores>>((acc, store) => {
+          const brand = store.brand?.trim();
+          if (!brand) return acc;
+          acc[brand] = acc[brand] ? [...acc[brand], store] : [store];
+          return acc;
+        }, {});
+
         const rows: StoreRow[] = (prices ?? []).map((price) => {
           const hasSale = typeof price.sale === "number" && price.sale > 0 && price.sale < price.price;
+          const store = storesById.get(price.storeId);
+          const candidateBranches = store?.brand ? branchesByBrand[store.brand] ?? [] : [];
+          const nearestBranch = userLocation
+            ? candidateBranches
+                .filter((candidate) => typeof candidate.latitude === "number" && typeof candidate.longitude === "number")
+                .sort((left, right) => {
+                  const leftDistance = calculateDistanceKm(userLocation.latitude, userLocation.longitude, left.latitude!, left.longitude!);
+                  const rightDistance = calculateDistanceKm(userLocation.latitude, userLocation.longitude, right.latitude!, right.longitude!);
+                  return leftDistance - rightDistance;
+                })[0]
+            : undefined;
+          const displayStore = nearestBranch ?? store;
+
           return {
-            id: price.storeId,
-            name: storeNames.get(price.storeId) ?? price.storeId,
+            id: displayStore?.id ?? price.storeId,
+            name: displayStore?.name ?? store?.name ?? price.storeId,
+            brand: store?.brand,
+            address: displayStore?.address,
+            city: displayStore?.city,
             price: hasSale ? price.sale as number : price.price,
+            distanceKm:
+              userLocation && typeof displayStore?.latitude === "number" && typeof displayStore?.longitude === "number"
+                ? calculateDistanceKm(userLocation.latitude, userLocation.longitude, displayStore.latitude, displayStore.longitude)
+                : undefined,
             originalPrice: hasSale ? price.price : undefined,
             discountPercent: hasSale ? Math.round(((price.price - (price.sale as number)) / price.price) * 100) : undefined,
             saleDate: hasSale ? price.saleDate : undefined,
@@ -254,11 +359,44 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScr
     return () => {
       cancelled = true;
     };
-  }, [getPrices, getStores, selectedProduct, t]);
+  }, [getPrices, getStores, selectedProduct, t, userLocation]);
+
+  useEffect(() => {
+    if (!selectedProduct) {
+      setRelatedProducts([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadRelated = async () => {
+      setIsLoadingRelatedProducts(true);
+      try {
+        const data = await getRelatedProducts([selectedProduct.id], 6);
+        if (cancelled) return;
+        setRelatedProducts((data ?? []).filter((product) => product.id !== selectedProduct.id));
+      } catch (err) {
+        if (!cancelled) {
+          console.error(err);
+          setRelatedProducts([]);
+        }
+      } finally {
+        if (!cancelled) setIsLoadingRelatedProducts(false);
+      }
+    };
+
+    void loadRelated();
+    return () => {
+      cancelled = true;
+    };
+  }, [getRelatedProducts, selectedProduct]);
 
   const sortedStores = useMemo(() => {
     return [...storeRows].sort((a, b) => {
       if (sortBy === "price") return a.price - b.price;
+      if (typeof a.distanceKm === "number" && typeof b.distanceKm === "number") return a.distanceKm - b.distanceKm;
+      if (typeof a.distanceKm === "number") return -1;
+      if (typeof b.distanceKm === "number") return 1;
       return a.name.localeCompare(b.name);
     });
   }, [sortBy, storeRows]);
@@ -267,6 +405,18 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScr
     if (sortedStores.length < 2) return 0;
     return sortedStores[sortedStores.length - 1].price - sortedStores[0].price;
   }, [sortedStores]);
+
+  const maxSavingsValue = useMemo(() => {
+    const discountedStore = sortedStores.find(
+      (store) => typeof store.originalPrice === "number" && store.originalPrice > store.price,
+    );
+
+    if (discountedStore?.originalPrice) {
+      return discountedStore.originalPrice - discountedStore.price;
+    }
+
+    return savings;
+  }, [savings, sortedStores]);
 
   const formatSaleDate = (value?: string) => {
     if (!value) return null;
@@ -458,9 +608,48 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScr
                   <Text style={styles.detailLabel}>{t("prices.maxSavings")}</Text>
                   <View style={styles.detailSavingsRow}>
                     <Tag size={14} color="#6EE7B7" />
-                    <Text style={styles.detailSavings}>{sortedStores.length >= 2 ? t("prices.savingsOff", { amount: formatCurrency(savings, i18n.language) }) : "-"}</Text>
+                    <Text style={styles.detailSavings}>
+                      {maxSavingsValue > 0 ? t("prices.savingsOff", { amount: formatCurrency(maxSavingsValue, i18n.language) }) : "-"}
+                    </Text>
                   </View>
                 </View>
+              </View>
+
+              <View style={styles.relatedSection}>
+                <Text style={styles.relatedSectionTitle}>{t("prices.relatedProducts")}</Text>
+
+                {isLoadingRelatedProducts ? (
+                  <View style={styles.relatedLoadingRow}>
+                    <Loader size={16} color="#E0E7FF" />
+                    <Text style={styles.relatedLoadingText}>{t("prices.loadingRelatedProducts")}</Text>
+                  </View>
+                ) : relatedProducts.length > 0 ? (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.relatedScrollContent}>
+                    {relatedProducts.map((product) => {
+                      const imageSource = getProductImageSource(product);
+
+                      return (
+                        <TouchableOpacity
+                          key={product.id}
+                          style={styles.relatedProductCard}
+                          onPress={() => setSelectedProduct(product)}
+                          activeOpacity={0.85}
+                        >
+                          <View style={styles.relatedProductImageBox}>
+                            {imageSource ? (
+                              <Image source={imageSource} style={styles.relatedProductImage} resizeMode="cover" />
+                            ) : (
+                              <Text style={styles.relatedProductFallback}>{product.emoji ?? "PK"}</Text>
+                            )}
+                          </View>
+                          <Text style={styles.relatedProductName} numberOfLines={2}>{product.name}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                ) : (
+                  <Text style={styles.relatedEmptyText}>{t("prices.noRelatedProducts")}</Text>
+                )}
               </View>
             </View>
           ) : (
@@ -514,6 +703,9 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScr
         )}
 
         <View style={styles.storesSection}>
+          {sortBy === "distance" && !isLoadingLocation && !userLocation ? (
+            <Text style={styles.emptyStateText}>{t("prices.enableLocationToSort")}</Text>
+          ) : null}
           {sortedStores.length === 0 ? (
             <Text style={styles.emptyStateText}>{selectedProduct ? t("prices.noPrices") : t("prices.selectProductToSeePrices")}</Text>
           ) : (
@@ -526,6 +718,14 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScr
                     </View>
                     <View>
                       <Text style={styles.storeName}>{store.name}</Text>
+                      {store.address || store.city ? (
+                        <Text style={styles.storeAddress} numberOfLines={1}>
+                          {[store.address, store.city].filter(Boolean).join(", ")}
+                        </Text>
+                      ) : null}
+                      {typeof store.distanceKm === "number" ? (
+                        <Text style={styles.storeDistance}>{t("prices.distanceAway", { value: store.distanceKm.toFixed(1) })}</Text>
+                      ) : null}
                     </View>
                   </View>
                   <View style={{ alignItems: "flex-end" }}>
@@ -610,6 +810,17 @@ function createStyles(colors: ReturnType<typeof useTheme>["colors"]) {
   detailPrice: { fontSize: 26, fontWeight: "800", color: colors.surface },
   detailSavingsRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   detailSavings: { fontSize: 18, fontWeight: "700", color: "#6EE7B7" },
+  relatedSection: { marginTop: 18, gap: 10 },
+  relatedSectionTitle: { fontSize: 12, fontWeight: "700", color: "#E0E7FF", textTransform: "uppercase", letterSpacing: 0.5 },
+  relatedLoadingRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  relatedLoadingText: { fontSize: 12, color: "#E0E7FF" },
+  relatedScrollContent: { gap: 10, paddingRight: 4 },
+  relatedProductCard: { width: 126, borderRadius: Radii.xl, backgroundColor: "rgba(255,255,255,0.12)", padding: 10, gap: 8 },
+  relatedProductImageBox: { height: 72, borderRadius: Radii.lg, backgroundColor: "rgba(255,255,255,0.18)", alignItems: "center", justifyContent: "center", overflow: "hidden" },
+  relatedProductImage: { width: "100%", height: "100%" },
+  relatedProductFallback: { fontSize: 13, fontWeight: "800", color: colors.surface },
+  relatedProductName: { fontSize: 12, fontWeight: "700", color: colors.surface, lineHeight: 16 },
+  relatedEmptyText: { fontSize: 12, color: "#E0E7FF" },
   placeholderCard: { backgroundColor: colors.surface, borderRadius: Radii["3xl"], padding: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 },
   placeholderTitle: { fontSize: 14, fontWeight: "700", color: colors.gray900 },
   placeholderText: { marginTop: 4, fontSize: 12, color: colors.gray400 },
@@ -633,6 +844,8 @@ function createStyles(colors: ReturnType<typeof useTheme>["colors"]) {
   rankText: { fontSize: 13, fontWeight: "700", color: colors.gray500 },
   rankTextActive: { color: colors.surface },
   storeName: { fontSize: 14, fontWeight: "700", color: colors.gray900 },
+  storeAddress: { fontSize: 11, color: colors.gray500, marginTop: 2 },
+  storeDistance: { fontSize: 11, color: colors.gray500, marginTop: 2 },
   storePrice: { fontSize: 20, fontWeight: "800", color: colors.gray900 },
   storeOriginalPrice: { fontSize: 11, color: colors.gray400, textDecorationLine: "line-through", marginTop: 2 },
   storeDiscount: { fontSize: 11, fontWeight: "700", color: colors.success500, marginTop: 1 },

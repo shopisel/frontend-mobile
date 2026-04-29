@@ -15,7 +15,11 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "pt.isel.shopisel"
+      "bundleIdentifier": "pt.isel.shopisel",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Precisamos de acesso a camara para ler codigos de barras.",
+        "NSLocationWhenInUseUsageDescription": "Precisamos da tua localizacao para mostrar as lojas mais proximas."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -23,6 +27,11 @@
         "backgroundColor": "#6366F1"
       },
       "package": "pt.isel.shopisel",
+      "permissions": [
+        "CAMERA",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ],
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
@@ -33,7 +42,19 @@
     "plugins": [
       "expo-router",
       "expo-web-browser",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Precisamos de acesso a camara para ler codigos de barras."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Precisamos da tua localizacao para mostrar as lojas mais proximas."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

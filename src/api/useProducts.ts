@@ -25,6 +25,20 @@ export function useProducts() {
   const getSubCategories     = useCallback(async (categoryId: string): Promise<Category[]>        => get(`/categories/${categoryId}/subcategories`),                  [get]);
   const getProductsByCategory= useCallback(async (categoryId: string): Promise<Product[]>         => get(`/products?categoryId=${encodeURIComponent(categoryId)}`),   [get]);
   const getProductsByIds     = useCallback(async (ids: string[]): Promise<Product[]>              => ids.length ? get(`/products?ids=${encodeURIComponent(ids.join(","))}`) : [], [get]);
+  const getRelatedProducts   = useCallback(async (favoriteIds: string[], limit = 6, maxDistance?: number): Promise<Product[]> => {
+    if (!favoriteIds.length) return [];
 
-  return { searchProducts, getMainCategories, getSubCategories, getProductsByCategory, getProductsByIds };
+    const params = new URLSearchParams({
+      favoriteIds: favoriteIds.join(","),
+      limit: String(limit),
+    });
+
+    if (typeof maxDistance === "number") {
+      params.set("maxDistance", String(maxDistance));
+    }
+
+    return get(`/products/related?${params.toString()}`);
+  }, [get]);
+
+  return { searchProducts, getMainCategories, getSubCategories, getProductsByCategory, getProductsByIds, getRelatedProducts };
 }

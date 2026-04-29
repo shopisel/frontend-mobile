@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Camera, Flashlight, Image as ImageIcon, X } from "lucide-react-native";
+import { CameraView, useCameraPermissions } from "expo-camera";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { Colors } from "../../styles/colors";
@@ -27,13 +28,14 @@ const scannedProduct = {
 export function ScanScreen({ onNavigate }: ScanScreenProps) {
   const insets = useSafeAreaInsets();
   const { t, i18n } = useTranslation();
+  const [permission, requestPermission] = useCameraPermissions();
   const [torchOn, setTorchOn] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState(false);
   const [added, setAdded] = useState(false);
 
   useEffect(() => {
-    if (!scanning) return;
+    if (!scanning || scanned) return;
 
     const timer = setTimeout(() => {
       setScanning(false);
@@ -68,16 +70,37 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
       </View>
 
       <View style={styles.preview}>
-        <View style={styles.cameraFrame}>
-          <View style={[styles.corner, styles.topLeft]} />
-          <View style={[styles.corner, styles.topRight]} />
-          <View style={[styles.corner, styles.bottomLeft]} />
-          <View style={[styles.corner, styles.bottomRight]} />
-          <Text style={styles.previewEmoji}>{scanned ? scannedProduct.emoji : "??"}</Text>
-          <Text style={styles.previewText}>
-            {scanning ? t("scanScreen.looking") : scanned ? t("scanScreen.identified") : t("scanScreen.ready")}
-          </Text>
-        </View>
+        {permission?.granted ? (
+          <View style={styles.cameraFrame}>
+            <CameraView
+              style={styles.cameraView}
+              facing="back"
+              enableTorch={torchOn}
+              onBarcodeScanned={scanned ? undefined : () => {
+                setScanning(false);
+                setScanned(true);
+              }}
+            />
+            <View style={[styles.corner, styles.topLeft]} />
+            <View style={[styles.corner, styles.topRight]} />
+            <View style={[styles.corner, styles.bottomLeft]} />
+            <View style={[styles.corner, styles.bottomRight]} />
+            {!scanned ? (
+              <Text style={styles.previewText}>
+                {scanning ? t("scanScreen.looking") : t("scanScreen.ready")}
+              </Text>
+            ) : null}
+          </View>
+        ) : (
+          <View style={styles.cameraPermissionCard}>
+            <Text style={styles.permissionTitle}>{t("prices.cameraPermissionTitle")}</Text>
+            <Text style={styles.permissionText}>{t("prices.cameraPermissionBody")}</Text>
+            <TouchableOpacity style={styles.primaryButton} onPress={() => void requestPermission()} activeOpacity={0.85}>
+              <Camera size={18} color={Colors.surface} />
+              <Text style={styles.primaryButtonText}>{t("prices.grantCameraPermission")}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
       <View style={styles.actions}>
@@ -196,6 +219,28 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
+    overflow: "hidden",
+  },
+  cameraView: { ...StyleSheet.absoluteFillObject },
+  cameraPermissionCard: {
+    width: "100%",
+    maxWidth: 310,
+    borderRadius: Radii["3xl"],
+    backgroundColor: "rgba(255,255,255,0.08)",
+    padding: 24,
+    gap: 14,
+    alignItems: "center",
+  },
+  permissionTitle: {
+    fontSize: Typography.xl,
+    fontWeight: "700",
+    color: Colors.surface,
+    textAlign: "center",
+  },
+  permissionText: {
+    fontSize: Typography.base,
+    color: "rgba(255,255,255,0.75)",
+    textAlign: "center",
   },
   corner: {
     position: "absolute",
@@ -227,14 +272,16 @@ const styles = StyleSheet.create({
     borderBottomWidth: 3,
     borderRightWidth: 3,
   },
-  previewEmoji: {
-    fontSize: 56,
-    marginBottom: 12,
-  },
   previewText: {
+    position: "absolute",
+    bottom: 26,
     fontSize: Typography.md,
     fontWeight: "600",
     color: "rgba(255,255,255,0.75)",
+    backgroundColor: "rgba(15,23,42,0.55)",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: Radii.xl,
   },
   actions: {
     paddingHorizontal: 20,
