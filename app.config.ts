@@ -17,6 +17,7 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: "pt.isel.shopisel",
+    googleServicesFile: "./GoogleService-Info.plist",
   },
   android: {
     adaptiveIcon: {
@@ -26,6 +27,7 @@ const config: ExpoConfig = {
     package: "pt.isel.shopisel",
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
+    googleServicesFile: "./google-services.json",
   },
   web: {
     bundler: "metro",
@@ -35,6 +37,8 @@ const config: ExpoConfig = {
     "expo-router",
     "expo-web-browser",
     "expo-secure-store",
+    "@react-native-firebase/app",
+    "@react-native-firebase/messaging",
   ],
   experiments: {
     typedRoutes: true,
@@ -45,7 +49,7 @@ const config: ExpoConfig = {
     KEYCLOAK_REALM: process.env.EXPO_PUBLIC_KEYCLOAK_REALM ?? "",
     KEYCLOAK_CLIENT: process.env.EXPO_PUBLIC_KEYCLOAK_CLIENT ?? "",
     eas: {
-      projectId: "50cdb508-7563-44f6-ba63-b533a8604bd3",
+      projectId: "ce42b7ef-9141-49c4-a945-712a7a1bca02",
     },
   },
 };

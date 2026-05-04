@@ -39,10 +39,19 @@ export function useAccounts() {
     await del(`/accounts/me/favorites/${encodeURIComponent(productId)}`);
   }, [del]);
 
+  const upsertPushToken = useCallback(async (request: {
+    fcm_token: string;
+    platform: "android" | "ios";
+    device_id?: string | null;
+  }): Promise<void> => {
+    await post("/accounts/me/push-tokens", request);
+  }, [post]);
+
   return {
     syncMyAccount,
     getMyFavoriteProductIds,
     addFavoriteProduct,
     removeFavoriteProduct,
+    upsertPushToken,
   };
 }

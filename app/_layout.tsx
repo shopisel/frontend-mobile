@@ -8,6 +8,7 @@ import { FavoritesProvider } from "../src/favorites/FavoritesProvider";
 import "../src/i18n";
 import { LanguageProvider } from "../src/i18n/LanguageProvider";
 import { ThemeProvider, useTheme } from "../src/theme/ThemeProvider";
+import { PushTokenRegistrar } from "../src/push/PushTokenRegistrar";
 
 export default function RootLayout() {
   return (
@@ -16,6 +17,7 @@ export default function RootLayout() {
         <ThemeProvider>
           <LanguageProvider>
             <AuthProvider>
+              <PushTokenRegistrar />
               <FavoritesProvider>
                 <AppShell />
               </FavoritesProvider>
