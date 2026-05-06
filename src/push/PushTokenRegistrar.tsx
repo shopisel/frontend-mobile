@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { Platform } from "react-native";
+import Constants, { ExecutionEnvironment } from "expo-constants";
 import * as SecureStore from "expo-secure-store";
 import { useAuth } from "../auth/AuthProvider";
 import { useAccounts } from "../api/useAccounts";
@@ -27,6 +28,10 @@ function isNotificationsPlatform(platform: string): platform is "android" | "ios
   return platform === "android" || platform === "ios";
 }
 
+function canUseNativeMessaging(): boolean {
+  return Constants.executionEnvironment !== ExecutionEnvironment.StoreClient;
+}
+
 export function PushTokenRegistrar() {
   const { initialized, isAuthenticated } = useAuth();
   const { upsertPushToken } = useAccounts();
@@ -35,6 +40,7 @@ export function PushTokenRegistrar() {
     if (!initialized || !isAuthenticated) return;
     const platform = Platform.OS;
     if (!isNotificationsPlatform(platform)) return;
+    if (!canUseNativeMessaging()) return;
 
     let cancelled = false;
     let unsubscribeTokenRefresh: (() => void) | null = null;
