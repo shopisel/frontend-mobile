@@ -31,10 +31,10 @@ jobs:
       - name: Validate Expo config
         run: npx expo config --json
 
-      - name: Install EAS CLI
-        run: npm install -g eas-cli
+      # - name: Install EAS CLI
+      #   run: npm install -g eas-cli
 
-      - name: Trigger Android EAS Build
-        run: eas build --platform android --profile preview --non-interactive
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      # - name: Trigger Android EAS Build
+      #   run: eas build --platform android --profile preview --non-interactive
+      #   env:
+      #     EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
