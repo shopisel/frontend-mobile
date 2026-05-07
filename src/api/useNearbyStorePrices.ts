@@ -1,13 +1,8 @@
 import { useEffect, useState } from "react";
-import * as Location from "expo-location";
 import { useTranslation } from "react-i18next";
+import { useUserLocation, type UserLocation } from "../location/useUserLocation";
 import { usePrices } from "./usePrices";
 import { useStores } from "./useStores";
-
-export type UserLocation = {
-  latitude: number;
-  longitude: number;
-};
 
 export type StoreRow = {
   id: string;
@@ -57,54 +52,10 @@ export function useNearbyStorePrices(productId?: string) {
   const { t } = useTranslation();
   const { getPrices } = usePrices();
   const { getStores } = useStores();
+  const { userLocation, isLoadingLocation, locationError } = useUserLocation();
   const [storeRows, setStoreRows] = useState<StoreRow[]>([]);
-  const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
   const [isLoadingStores, setIsLoadingStores] = useState(false);
-  const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const [storesError, setStoresError] = useState<string | null>(null);
-  const [locationError, setLocationError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadUserLocation = async () => {
-      setIsLoadingLocation(true);
-      setLocationError(null);
-
-      try {
-        const permission = await Location.requestForegroundPermissionsAsync();
-        if (cancelled) return;
-
-        if (permission.status !== "granted") {
-          setLocationError(t("prices.locationDenied"));
-          return;
-        }
-
-        const currentPosition = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-
-        if (cancelled) return;
-
-        setUserLocation({
-          latitude: currentPosition.coords.latitude,
-          longitude: currentPosition.coords.longitude,
-        });
-      } catch (err) {
-        if (!cancelled) {
-          setLocationError(err instanceof Error ? err.message : t("errors.requestFailed"));
-        }
-      } finally {
-        if (!cancelled) setIsLoadingLocation(false);
-      }
-    };
-
-    void loadUserLocation();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [t]);
 
   useEffect(() => {
     if (!productId) {

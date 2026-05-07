@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { ArrowUpDown, Loader, MapPin, Navigation, Search, Star, Tag } from "lucide-react-native";
-import * as Location from "expo-location";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { usePrices } from "../../api/usePrices";
@@ -11,6 +10,7 @@ import { formatCurrency } from "../../i18n/formatters";
 import { Radii, Typography } from "../../styles/typography";
 import { getCategoryImage } from "../../utils/categoryImages";
 import { useTheme } from "../../theme/ThemeProvider";
+import { useUserLocation } from "../../location/useUserLocation";
 
 type StoreRow = {
   id: string;
@@ -48,6 +48,7 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScr
   const { searchProducts, getMainCategories, getSubCategories, getProductsByCategory, getRelatedProducts } = useProducts();
   const { getPrices } = usePrices();
   const { getStores } = useStores();
+  const { userLocation, isLoadingLocation, locationError } = useUserLocation();
 
   const [mainCategories, setMainCategories] = useState<Category[]>([]);
   const [subCategories, setSubCategories] = useState<Category[]>([]);
@@ -60,13 +61,11 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScr
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<"price" | "distance">("price");
   const [mapView, setMapView] = useState(false);
-  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [isLoadingCats, setIsLoadingCats] = useState(false);
   const [isLoadingSubCats, setIsLoadingSubCats] = useState(false);
   const [isLoadingProducts, setIsLoadingProducts] = useState(false);
   const [isLoadingStores, setIsLoadingStores] = useState(false);
   const [isLoadingRelatedProducts, setIsLoadingRelatedProducts] = useState(false);
-  const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const [favoritePendingId, setFavoritePendingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -133,44 +132,9 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScr
   };
 
   useEffect(() => {
-    let cancelled = false;
+    if (locationError) setError(locationError);
+  }, [locationError]);
 
-    const loadUserLocation = async () => {
-      setIsLoadingLocation(true);
-      try {
-        const permission = await Location.requestForegroundPermissionsAsync();
-        if (cancelled) return;
-
-        if (permission.status !== "granted") {
-          setError(t("prices.locationDenied"));
-          return;
-        }
-
-        const currentPosition = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-
-        if (cancelled) return;
-
-        setUserLocation({
-          latitude: currentPosition.coords.latitude,
-          longitude: currentPosition.coords.longitude,
-        });
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : t("errors.requestFailed"));
-        }
-      } finally {
-        if (!cancelled) setIsLoadingLocation(false);
-      }
-    };
-
-    void loadUserLocation();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [t]);
 
   useEffect(() => {
     let cancelled = false;
