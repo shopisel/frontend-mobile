@@ -30,6 +30,17 @@ type PricesScreenProps = {
   onToggleFavorite: (product: Product) => Promise<void>;
 };
 
+const getStoreDisplayName = (store: StoreRow) => {
+  const name = store.name.trim();
+  const brand = store.brand?.trim();
+
+  if (!brand || name.toLocaleLowerCase().startsWith(brand.toLocaleLowerCase())) {
+    return name;
+  }
+
+  return `${brand} ${name}`;
+};
+
 export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScreenProps) {
   const insets = useSafeAreaInsets();
   const { t, i18n } = useTranslation();
@@ -737,10 +748,10 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScr
                     <View style={[styles.rankBadge, index === 0 && styles.rankBadgeActive]}>
                       <Text style={[styles.rankText, index === 0 && styles.rankTextActive]}>#{index + 1}</Text>
                     </View>
-                    <View>
-                      <Text style={styles.storeName}>{store.name}</Text>
+                    <View style={styles.storeInfo}>
+                      <Text style={styles.storeName} numberOfLines={1}>{getStoreDisplayName(store)}</Text>
                       {store.address || store.city ? (
-                        <Text style={styles.storeAddress} numberOfLines={1}>
+                        <Text style={styles.storeAddress} numberOfLines={2}>
                           {[store.address, store.city].filter(Boolean).join(", ")}
                         </Text>
                       ) : null}
@@ -749,7 +760,7 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScr
                       ) : null}
                     </View>
                   </View>
-                  <View style={{ alignItems: "flex-end" }}>
+                  <View style={styles.storePriceColumn}>
                     <Text style={[styles.storePrice, index === 0 && { color: colors.success500 }]}>{formatCurrency(store.price, i18n.language)}</Text>
                     {typeof store.originalPrice === "number" && store.originalPrice > store.price ? (
                       <Text style={styles.storeOriginalPrice}>{formatCurrency(store.originalPrice, i18n.language)}</Text>
@@ -856,15 +867,17 @@ function createStyles(colors: ReturnType<typeof useTheme>["colors"]) {
   storesSection: { paddingHorizontal: 20, paddingBottom: 32, gap: 12 },
   storeCard: { backgroundColor: colors.surface, borderRadius: Radii["2xl"], padding: 16, borderWidth: 1, borderColor: colors.gray100, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
   storeCardBest: { borderColor: "#D4AF37", borderWidth: 2, shadowColor: "#D4AF37", shadowOpacity: 0.12 },
-  storeHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  storeLeftRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  storeHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  storeLeftRow: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12 },
+  storeInfo: { flex: 1, minWidth: 0 },
   rankBadge: { width: 32, height: 32, borderRadius: Radii.lg, backgroundColor: colors.gray100, alignItems: "center", justifyContent: "center" },
   rankBadgeActive: { backgroundColor: colors.primary600 },
   rankText: { fontSize: 13, fontWeight: "700", color: colors.gray500 },
   rankTextActive: { color: colors.surface },
   storeName: { fontSize: 14, fontWeight: "700", color: colors.gray900 },
-  storeAddress: { fontSize: 11, color: colors.gray500, marginTop: 2 },
+  storeAddress: { fontSize: 11, color: colors.gray500, marginTop: 2, lineHeight: 15 },
   storeDistance: { fontSize: 11, color: colors.gray500, marginTop: 2 },
+  storePriceColumn: { flexShrink: 0, alignItems: "flex-end" },
   storePrice: { fontSize: 20, fontWeight: "800", color: colors.gray900 },
   storeOriginalPrice: { fontSize: 11, color: colors.gray400, textDecorationLine: "line-through", marginTop: 2 },
   storeDiscount: { fontSize: 11, fontWeight: "700", color: colors.success500, marginTop: 1 },
