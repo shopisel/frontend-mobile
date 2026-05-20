@@ -1,56 +1,90 @@
-import { useEffect, useState } from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useMemo, useState } from "react";
+import { ActivityIndicator, Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Camera, Flashlight, Image as ImageIcon, X } from "lucide-react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { Colors } from "../../styles/colors";
 import { Radii, Typography } from "../../styles/typography";
-import { formatCurrency } from "../../i18n/formatters";
+import { ProductResponse, useProducts } from "../../api/useProducts";
+import { extractEanFromQrPayload } from "../../utils/qrCode";
+import { extractKeywordsFromOff, fetchOpenFoodFactsProduct } from "../../utils/openFoodFacts";
 
 interface ScanScreenProps {
   onNavigate?: (route: string) => void;
 }
 
-const scannedProduct = {
-  name: "Organic Oat Milk",
-  brand: "Oatly",
-  bestPrice: 3.29,
-  bestStore: "NatureMart",
-  emoji: "??",
-  stores: [
-    { name: "NatureMart", price: 3.29 },
-    { name: "FreshMart", price: 3.79 },
-    { name: "CostPlus", price: 4.1 },
-  ],
+type ScanResult = {
+  barcode: string;
+  matchType: "exact" | "related" | string;
+  product?: ProductResponse | null;
+  relatedProducts: ProductResponse[];
+};
+
+const toImageUri = (value: unknown): string | undefined => {
+  if (!value) return undefined;
+  const uri = String(value).trim();
+  if (!uri) return undefined;
+  if (uri.startsWith("http://") || uri.startsWith("https://")) return uri;
+  return undefined;
 };
 
 export function ScanScreen({ onNavigate }: ScanScreenProps) {
   const insets = useSafeAreaInsets();
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const [permission, requestPermission] = useCameraPermissions();
+  const { qrCodeLookup } = useProducts();
   const [torchOn, setTorchOn] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState(false);
   const [added, setAdded] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
 
-  useEffect(() => {
-    if (!scanning || scanned) return;
+  const canAddToList = useMemo(() => Boolean(scanResult && !scanning && !scanError), [scanResult, scanning, scanError]);
 
-    const timer = setTimeout(() => {
+  const resetScan = () => {
+    setScanning(false);
+    setScanned(false);
+    setAdded(false);
+    setScanError(null);
+    setScanResult(null);
+  };
+
+  const handleScannedPayload = async (payload: string) => {
+    setScanError(null);
+    setScanResult(null);
+    setScanning(true);
+    setScanned(true);
+
+    try {
+      const barcode = extractEanFromQrPayload(payload);
+      if (!barcode) throw new Error("EAN_INVALID");
+
+      const off = await fetchOpenFoodFactsProduct(barcode);
+      const keywords = extractKeywordsFromOff(off);
+      const backendRes = await qrCodeLookup(barcode, keywords);
+
+      setScanResult({
+        barcode,
+        matchType: backendRes.matchType,
+        product: backendRes.product,
+        relatedProducts: backendRes.relatedProducts ?? [],
+      });
+    } catch (err) {
+      console.error("[ScanScreen] scan failed", err);
+      setScanError(typeof err === "object" && err && "message" in err ? String((err as any).message) : t("errors.requestFailed"));
+    } finally {
       setScanning(false);
-      setScanned(true);
-    }, 1800);
-
-    return () => clearTimeout(timer);
-  }, [scanning]);
+    }
+  };
 
   const handleAddToList = () => {
+    if (!canAddToList) return;
     setAdded(true);
     setTimeout(() => {
       onNavigate?.("lists");
-      setAdded(false);
-      setScanned(false);
+      resetScan();
     }, 700);
   };
 
@@ -76,10 +110,7 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
               style={styles.cameraView}
               facing="back"
               enableTorch={torchOn}
-              onBarcodeScanned={scanned ? undefined : () => {
-                setScanning(false);
-                setScanned(true);
-              }}
+              onBarcodeScanned={scanned ? undefined : (event) => void handleScannedPayload(event.data)}
             />
             <View style={[styles.corner, styles.topLeft]} />
             <View style={[styles.corner, styles.topRight]} />
@@ -124,31 +155,65 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
           <View style={styles.resultCard}>
             <View style={styles.resultHeader}>
               <View style={styles.productBubble}>
-                <Text style={styles.productEmoji}>{scannedProduct.emoji}</Text>
+                {toImageUri(scanResult?.product?.image) ? (
+                  <Image source={{ uri: toImageUri(scanResult?.product?.image) }} style={styles.productImage} />
+                ) : (
+                  <Text style={styles.productEmoji}>{"??"}</Text>
+                )}
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.resultBrand}>{scannedProduct.brand}</Text>
-                <Text style={styles.resultName}>{scannedProduct.name}</Text>
+                {scanResult?.matchType ? <Text style={styles.resultBrand}>{String(scanResult.matchType)}</Text> : null}
+                <Text style={styles.resultName}>
+                  {scanResult?.product?.name ?? t("common.unknownProduct")}
+                </Text>
               </View>
-              <TouchableOpacity style={styles.closeButton} onPress={() => setScanned(false)}>
+              <TouchableOpacity style={styles.closeButton} onPress={resetScan}>
                 <X size={16} color={Colors.gray500} />
               </TouchableOpacity>
             </View>
 
-            <View style={styles.highlight}>
-              <Text style={styles.highlightLabel}>{t("scanScreen.bestPrice")}</Text>
-              <Text style={styles.highlightPrice}>{formatCurrency(scannedProduct.bestPrice, i18n.language)}</Text>
-              <Text style={styles.highlightStore}>{scannedProduct.bestStore}</Text>
-            </View>
-
-            <View style={styles.storeList}>
-              {scannedProduct.stores.map((store) => (
-                <View key={store.name} style={styles.storeRow}>
-                  <Text style={styles.storeName}>{store.name}</Text>
-                  <Text style={styles.storePrice}>{formatCurrency(store.price, i18n.language)}</Text>
+            {scanning ? (
+              <View style={styles.loadingBox}>
+                <ActivityIndicator />
+                <Text style={styles.loadingText}>{t("addProduct.scanning")}</Text>
+              </View>
+            ) : scanError ? (
+              <View style={styles.errorBox}>
+                <Text style={styles.errorText}>{scanError}</Text>
+              </View>
+            ) : scanResult?.product ? (
+              <>
+                <View style={styles.highlight}>
+                  <Text style={styles.highlightLabel}>{t("scanScreen.identified")}</Text>
+                  <Text style={styles.highlightPrice}>{scanResult.product.name}</Text>
+                  {scanResult.product.brand ? <Text style={styles.highlightStore}>{scanResult.product.brand}</Text> : null}
                 </View>
-              ))}
-            </View>
+
+                {scanResult.relatedProducts?.length ? (
+                  <View style={styles.storeList}>
+                    {scanResult.relatedProducts.slice(0, 5).map((p) => (
+                      <View key={p.id} style={styles.storeRow}>
+                        <Text style={styles.storeName}>{p.name}</Text>
+                        <Text style={styles.storePrice}>{p.brand ?? ""}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+              </>
+            ) : scanResult?.relatedProducts?.length ? (
+              <View style={styles.storeList}>
+                {scanResult.relatedProducts.slice(0, 8).map((p) => (
+                  <View key={p.id} style={styles.storeRow}>
+                    <Text style={styles.storeName}>{p.name}</Text>
+                    <Text style={styles.storePrice}>{p.brand ?? ""}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <View style={styles.errorBox}>
+                <Text style={styles.errorText}>{t("common.unknownProduct")}</Text>
+              </View>
+            )}
 
             <View style={styles.resultActions}>
               <TouchableOpacity style={styles.primarySplitButton} onPress={handleAddToList} activeOpacity={0.85}>
@@ -341,6 +406,12 @@ const styles = StyleSheet.create({
   productEmoji: {
     fontSize: 28,
   },
+  productImage: {
+    width: 56,
+    height: 56,
+    resizeMode: "cover",
+    borderRadius: Radii.xl,
+  },
   resultBrand: {
     fontSize: Typography.sm,
     color: Colors.gray500,
@@ -379,6 +450,31 @@ const styles = StyleSheet.create({
     fontSize: Typography.base,
     color: Colors.gray600,
     marginTop: 2,
+  },
+  loadingBox: {
+    borderRadius: Radii["2xl"],
+    backgroundColor: Colors.gray50,
+    padding: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
+  loadingText: {
+    fontSize: Typography.base,
+    fontWeight: "600",
+    color: Colors.gray700,
+  },
+  errorBox: {
+    borderRadius: Radii["2xl"],
+    backgroundColor: Colors.gray50,
+    padding: 14,
+  },
+  errorText: {
+    fontSize: Typography.base,
+    fontWeight: "600",
+    color: Colors.gray700,
+    textAlign: "center",
   },
   storeList: {
     gap: 10,

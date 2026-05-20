@@ -17,8 +17,25 @@ export interface Product {
   emoji?: string;
 }
 
+export interface ProductResponse {
+  id: string;
+  name: string;
+  brand?: string | null;
+  barcode: string;
+  image: string;
+  categoryId: string;
+}
+
+export type QrCodeMatchType = "exact" | "related" | string;
+
+export interface QrCodeLookupResponse {
+  matchType: QrCodeMatchType;
+  product?: ProductResponse | null;
+  relatedProducts: ProductResponse[];
+}
+
 export function useProducts() {
-  const { get } = useApi();
+  const { get, post } = useApi();
 
   const searchProducts       = useCallback(async (query: string): Promise<Product[]>              => get(`/products?name=${encodeURIComponent(query)}`),             [get]);
   const getMainCategories    = useCallback(async (): Promise<Category[]>                          => get("/categories/main"),                                         [get]);
@@ -40,5 +57,14 @@ export function useProducts() {
     return get(`/products/related?${params.toString()}`);
   }, [get]);
 
-  return { searchProducts, getMainCategories, getSubCategories, getProductsByCategory, getProductsByIds, getRelatedProducts };
+  const qrCodeLookup = useCallback(async (barcode: string, keywords: string[]): Promise<QrCodeLookupResponse> => {
+    const res = await post("/products/qrCode", { barcode, keywords });
+    return {
+      matchType: String(res?.matchType ?? res?.MatchType ?? ""),
+      product: (res?.product ?? res?.Product ?? null) as ProductResponse | null,
+      relatedProducts: (res?.relatedProducts ?? res?.RelatedProducts ?? []) as ProductResponse[],
+    };
+  }, [post]);
+
+  return { searchProducts, getMainCategories, getSubCategories, getProductsByCategory, getProductsByIds, getRelatedProducts, qrCodeLookup };
 }
