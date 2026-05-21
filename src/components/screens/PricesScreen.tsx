@@ -30,6 +30,7 @@ type StoreRow = {
 type PricesScreenProps = {
   favoriteProductIds: string[];
   onToggleFavorite: (product: Product) => Promise<void>;
+  initialProductId?: string;
 };
 
 const PRODUCTS_PAGE_SIZE = 50;
@@ -45,11 +46,11 @@ const getStoreDisplayName = (store: StoreRow) => {
   return `${brand} ${name}`;
 };
 
-export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScreenProps) {
+export function PricesScreen({ favoriteProductIds, onToggleFavorite, initialProductId }: PricesScreenProps) {
   const insets = useSafeAreaInsets();
   const { t, i18n } = useTranslation();
   const { colors } = useTheme();
-  const { searchProducts, getMainCategories, getSubCategories, getProductsByCategory, getRelatedProducts } = useProducts();
+  const { searchProducts, getMainCategories, getSubCategories, getProductsByCategory, getRelatedProducts, getProductsByIds } = useProducts();
   const { getPrices } = usePrices();
   const { getStores } = useStores();
   const { userLocation, isLoadingLocation, locationError } = useUserLocation();
@@ -75,6 +76,50 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScr
   const [favoritePendingId, setFavoritePendingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const [lastInitialProductId, setLastInitialProductId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const nextId = initialProductId?.trim();
+    if (!nextId) return;
+    if (lastInitialProductId === nextId) return;
+
+    let cancelled = false;
+    setLastInitialProductId(nextId);
+
+    const loadInitial = async () => {
+      setError(null);
+      setIsLoadingProducts(true);
+      try {
+        const data = await getProductsByIds([nextId]);
+        const product = (data ?? [])[0] ?? null;
+        if (cancelled) return;
+
+        setSearchQuery("");
+        setSelectedMainCat(null);
+        setSelectedSubCat(null);
+        setMainCategories([]);
+        setSubCategories([]);
+
+        if (product) {
+          setProducts([product]);
+          setSelectedProduct(product);
+        } else {
+          setProducts([]);
+          setSelectedProduct(null);
+        }
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : t("errors.requestFailed"));
+      } finally {
+        if (!cancelled) setIsLoadingProducts(false);
+      }
+    };
+
+    void loadInitial();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [getProductsByIds, initialProductId, lastInitialProductId, t]);
 
   const getFallbackStoreName = (storeId: string) => {
     switch (storeId) {

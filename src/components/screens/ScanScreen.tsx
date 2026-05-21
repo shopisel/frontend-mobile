@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ActivityIndicator, Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Camera, Flashlight, Image as ImageIcon, X } from "lucide-react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { Colors } from "../../styles/colors";
 import { Radii, Typography } from "../../styles/typography";
 import { ProductResponse, useProducts } from "../../api/useProducts";
+import { getCategoryImage } from "../../utils/categoryImages";
 import { extractEanFromQrPayload } from "../../utils/qrCode";
 import { extractKeywordsFromOff, fetchOpenFoodFactsProduct } from "../../utils/openFoodFacts";
 
@@ -21,12 +22,19 @@ type ScanResult = {
   relatedProducts: ProductResponse[];
 };
 
-const toImageUri = (value: unknown): string | undefined => {
-  if (!value) return undefined;
-  const uri = String(value).trim();
-  if (!uri) return undefined;
-  if (uri.startsWith("http://") || uri.startsWith("https://")) return uri;
-  return undefined;
+const getProductImageSource = (product?: ProductResponse | null) => {
+  if (!product) return null;
+  return getCategoryImage(product.image, product.categoryId ?? product.name);
+};
+
+const getBadge = (value?: string) => {
+  return (value ?? "")
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("")
+    .slice(0, 2) || "PK";
 };
 
 export function ScanScreen({ onNavigate }: ScanScreenProps) {
@@ -155,10 +163,10 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
           <View style={styles.resultCard}>
             <View style={styles.resultHeader}>
               <View style={styles.productBubble}>
-                {toImageUri(scanResult?.product?.image) ? (
-                  <Image source={{ uri: toImageUri(scanResult?.product?.image) }} style={styles.productImage} />
+                {getProductImageSource(scanResult?.product) ? (
+                  <Image source={getProductImageSource(scanResult?.product)!} style={styles.productImage} />
                 ) : (
-                  <Text style={styles.productEmoji}>{"??"}</Text>
+                  <Text style={styles.productEmoji}>{getBadge(scanResult?.product?.name)}</Text>
                 )}
               </View>
               <View style={{ flex: 1 }}>
@@ -190,25 +198,81 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
                 </View>
 
                 {scanResult.relatedProducts?.length ? (
-                  <View style={styles.storeList}>
-                    {scanResult.relatedProducts.slice(0, 5).map((p) => (
-                      <View key={p.id} style={styles.storeRow}>
-                        <Text style={styles.storeName}>{p.name}</Text>
-                        <Text style={styles.storePrice}>{p.brand ?? ""}</Text>
-                      </View>
-                    ))}
-                  </View>
+                  <ScrollView
+                    style={styles.relatedList}
+                    contentContainerStyle={styles.relatedListContent}
+                    showsVerticalScrollIndicator={false}
+                    nestedScrollEnabled
+                  >
+                    {scanResult.relatedProducts.map((p) => {
+                      const imageSource = getProductImageSource(p);
+                      return (
+                        <TouchableOpacity
+                          key={p.id}
+                          style={styles.relatedRow}
+                          onPress={() => onNavigate?.(`prices?productId=${encodeURIComponent(p.id)}`)}
+                          activeOpacity={0.85}
+                        >
+                          <View style={styles.relatedImageBox}>
+                            {imageSource ? (
+                              <Image source={imageSource} style={styles.relatedImage} resizeMode="cover" />
+                            ) : (
+                              <Text style={styles.relatedFallback}>{getBadge(p.name)}</Text>
+                            )}
+                          </View>
+                          <View style={styles.relatedInfo}>
+                            <Text style={styles.relatedName} numberOfLines={2}>
+                              {p.name}
+                            </Text>
+                            {p.brand ? (
+                              <Text style={styles.relatedBrand} numberOfLines={1}>
+                                {p.brand}
+                              </Text>
+                            ) : null}
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
                 ) : null}
               </>
             ) : scanResult?.relatedProducts?.length ? (
-              <View style={styles.storeList}>
-                {scanResult.relatedProducts.slice(0, 8).map((p) => (
-                  <View key={p.id} style={styles.storeRow}>
-                    <Text style={styles.storeName}>{p.name}</Text>
-                    <Text style={styles.storePrice}>{p.brand ?? ""}</Text>
-                  </View>
-                ))}
-              </View>
+              <ScrollView
+                style={styles.relatedList}
+                contentContainerStyle={styles.relatedListContent}
+                showsVerticalScrollIndicator={false}
+                nestedScrollEnabled
+              >
+                {scanResult.relatedProducts.map((p) => {
+                  const imageSource = getProductImageSource(p);
+                  return (
+                    <TouchableOpacity
+                      key={p.id}
+                      style={styles.relatedRow}
+                      onPress={() => onNavigate?.(`prices?productId=${encodeURIComponent(p.id)}`)}
+                      activeOpacity={0.85}
+                    >
+                      <View style={styles.relatedImageBox}>
+                        {imageSource ? (
+                          <Image source={imageSource} style={styles.relatedImage} resizeMode="cover" />
+                        ) : (
+                          <Text style={styles.relatedFallback}>{getBadge(p.name)}</Text>
+                        )}
+                      </View>
+                      <View style={styles.relatedInfo}>
+                        <Text style={styles.relatedName} numberOfLines={2}>
+                          {p.name}
+                        </Text>
+                        {p.brand ? (
+                          <Text style={styles.relatedBrand} numberOfLines={1}>
+                            {p.brand}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
             ) : (
               <View style={styles.errorBox}>
                 <Text style={styles.errorText}>{t("common.unknownProduct")}</Text>
@@ -349,6 +413,7 @@ const styles = StyleSheet.create({
     borderRadius: Radii.xl,
   },
   actions: {
+    flex: 1,
     paddingHorizontal: 20,
     paddingBottom: 28,
     gap: 12,
@@ -385,6 +450,7 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.85)",
   },
   resultCard: {
+    flex: 1,
     backgroundColor: Colors.surface,
     borderRadius: Radii["3xl"],
     padding: 18,
@@ -497,6 +563,55 @@ const styles = StyleSheet.create({
     fontSize: Typography.md,
     fontWeight: "700",
     color: Colors.gray900,
+  },
+  relatedList: {
+    maxHeight: 240,
+  },
+  relatedListContent: {
+    gap: 10,
+    paddingBottom: 2,
+  },
+  relatedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: Radii.xl,
+    backgroundColor: Colors.gray50,
+  },
+  relatedImageBox: {
+    width: 42,
+    height: 42,
+    borderRadius: Radii.lg,
+    backgroundColor: Colors.primary50,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  relatedImage: {
+    width: "100%",
+    height: "100%",
+  },
+  relatedFallback: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: Colors.gray900,
+  },
+  relatedInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  relatedName: {
+    fontSize: Typography.base,
+    fontWeight: "700",
+    color: Colors.gray900,
+    lineHeight: 18,
+  },
+  relatedBrand: {
+    marginTop: 2,
+    fontSize: Typography.sm,
+    color: Colors.gray500,
   },
   resultActions: {
     flexDirection: "row",
