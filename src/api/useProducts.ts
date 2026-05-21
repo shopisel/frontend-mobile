@@ -11,6 +11,7 @@ export interface Category {
 export interface Product {
   id: string;
   name: string;
+  brand?: string | null;
   barcode: string;
   categoryId: string;
   image?: string;
@@ -37,10 +38,22 @@ export interface QrCodeLookupResponse {
 export function useProducts() {
   const { get, post } = useApi();
 
-  const searchProducts       = useCallback(async (query: string): Promise<Product[]>              => get(`/products?name=${encodeURIComponent(query)}`),             [get]);
+  const searchProducts       = useCallback(async (query: string, limit?: number, skip?: number): Promise<Product[]> => {
+    const params = new URLSearchParams();
+    params.set("name", query);
+    if (typeof limit === "number") params.set("limit", String(limit));
+    if (typeof skip === "number") params.set("skip", String(skip));
+    return get(`/products?${params.toString()}`);
+  }, [get]);
   const getMainCategories    = useCallback(async (): Promise<Category[]>                          => get("/categories/main"),                                         [get]);
   const getSubCategories     = useCallback(async (categoryId: string): Promise<Category[]>        => get(`/categories/${categoryId}/subcategories`),                  [get]);
-  const getProductsByCategory= useCallback(async (categoryId: string): Promise<Product[]>         => get(`/products?categoryId=${encodeURIComponent(categoryId)}`),   [get]);
+  const getProductsByCategory= useCallback(async (categoryId: string, limit?: number, skip?: number): Promise<Product[]> => {
+    const params = new URLSearchParams();
+    params.set("categoryId", categoryId);
+    if (typeof limit === "number") params.set("limit", String(limit));
+    if (typeof skip === "number") params.set("skip", String(skip));
+    return get(`/products?${params.toString()}`);
+  }, [get]);
   const getProductsByIds     = useCallback(async (ids: string[]): Promise<Product[]>              => ids.length ? get(`/products?ids=${encodeURIComponent(ids.join(","))}`) : [], [get]);
   const getRelatedProducts   = useCallback(async (favoriteIds: string[], limit = 6, maxDistance?: number): Promise<Product[]> => {
     if (!favoriteIds.length) return [];

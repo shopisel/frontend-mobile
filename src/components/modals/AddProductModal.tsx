@@ -29,6 +29,7 @@ import { Radii, Typography } from "../../styles/typography";
 import { formatCurrency } from "../../i18n/formatters";
 
 type InputMethod = "text" | "category";
+const PRODUCTS_PAGE_SIZE = 50;
 
 export type AddListItemPayload = {
   productId: string;
@@ -96,6 +97,7 @@ function ProductRow({ product, onPress }: { product: Product; onPress: () => voi
       </View>
       <View style={{ flex: 1 }}>
         <Text style={productStyles.name} numberOfLines={1}>{product.name}</Text>
+        {product.brand ? <Text style={productStyles.brand} numberOfLines={1}>{product.brand}</Text> : null}
         <Text style={productStyles.sub}>{t("addProduct.tapToChooseStore")}</Text>
       </View>
       <ChevronRight size={16} color={Colors.gray300} />
@@ -129,6 +131,8 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
   const [query, setQuery] = useState("");
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
+  const [loadingMoreProducts, setLoadingMoreProducts] = useState(false);
+  const [hasMoreProducts, setHasMoreProducts] = useState(false);
   const [mainCats, setMainCats] = useState<Category[]>([]);
   const [subCats, setSubCats] = useState<Category[]>([]);
   const [selectedCat, setSelectedCat] = useState<Category | null>(null);
@@ -136,7 +140,7 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
   const [loadingCats, setLoadingCats] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [stores, setStores] = useState<StoreResponse[]>([]);
-  const [pricesByStore, setPricesByStore] = useState<Record<string, { price: number; originalPrice?: number; saleDate?: string }>>({});
+  const [pricesByStore, setPricesByStore] = useState<Record<string, { price: number; originalPrice?: number; saleDate?: string; quantityText?: string | null; unitPriceText?: string | null }>>({});
   const [loadingStores, setLoadingStores] = useState(false);
   const [addedCount, setAddedCount] = useState(0);
 
@@ -147,6 +151,8 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
       setMethod("text");
       setQuery("");
       setProducts([]);
+      setHasMoreProducts(false);
+      setLoadingMoreProducts(false);
       setMainCats([]);
       setSubCats([]);
       setSelectedCat(null);
@@ -163,16 +169,23 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!query.trim()) {
       setProducts([]);
+      setHasMoreProducts(false);
+      setLoadingMoreProducts(false);
       return;
     }
 
     debounceRef.current = setTimeout(async () => {
       setLoadingProducts(true);
+      setHasMoreProducts(false);
+      setLoadingMoreProducts(false);
       try {
-        setProducts((await searchProducts(query.trim())) ?? []);
+        const data = await searchProducts(query.trim(), PRODUCTS_PAGE_SIZE, 0);
+        setProducts(data ?? []);
+        setHasMoreProducts((data ?? []).length === PRODUCTS_PAGE_SIZE);
       } catch (error) {
         console.error(error);
         setProducts([]);
+        setHasMoreProducts(false);
       } finally {
         setLoadingProducts(false);
       }
@@ -196,6 +209,8 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
     if (!selectedCat) {
       setSubCats([]);
       setProducts([]);
+      setHasMoreProducts(false);
+      setLoadingMoreProducts(false);
       return;
     }
 
@@ -209,15 +224,49 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
   useEffect(() => {
     if (!selectedSubCat) {
       setProducts([]);
+      setHasMoreProducts(false);
+      setLoadingMoreProducts(false);
       return;
     }
 
     setLoadingProducts(true);
-    getProductsByCategory(selectedSubCat.id)
-      .then((data) => setProducts(data ?? []))
+    setHasMoreProducts(false);
+    setLoadingMoreProducts(false);
+    getProductsByCategory(selectedSubCat.id, PRODUCTS_PAGE_SIZE, 0)
+      .then((data) => {
+        setProducts(data ?? []);
+        setHasMoreProducts((data ?? []).length === PRODUCTS_PAGE_SIZE);
+      })
       .catch(console.error)
       .finally(() => setLoadingProducts(false));
   }, [getProductsByCategory, selectedSubCat]);
+
+  const loadMoreProducts = async () => {
+    if (loadingProducts || loadingMoreProducts || !hasMoreProducts) return;
+
+    const currentSkip = products.length;
+    setLoadingMoreProducts(true);
+    try {
+      if (method === "text") {
+        const nextQuery = query.trim();
+        if (!nextQuery) return;
+        const data = await searchProducts(nextQuery, PRODUCTS_PAGE_SIZE, currentSkip);
+        setProducts((prev) => [...prev, ...(data ?? [])]);
+        setHasMoreProducts((data ?? []).length === PRODUCTS_PAGE_SIZE);
+        return;
+      }
+
+      if (method === "category" && selectedSubCat) {
+        const data = await getProductsByCategory(selectedSubCat.id, PRODUCTS_PAGE_SIZE, currentSkip);
+        setProducts((prev) => [...prev, ...(data ?? [])]);
+        setHasMoreProducts((data ?? []).length === PRODUCTS_PAGE_SIZE);
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoadingMoreProducts(false);
+    }
+  };
 
   useEffect(() => {
     if (!selectedProduct) {
@@ -231,12 +280,14 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
       try {
         const prices = await getPrices(selectedProduct.id);
         const storeIds = [...new Set(prices.map((price) => price.storeId))];
-        const nextPriceMap = prices.reduce<Record<string, { price: number; originalPrice?: number; saleDate?: string }>>((acc, price) => {
+        const nextPriceMap = prices.reduce<Record<string, { price: number; originalPrice?: number; saleDate?: string; quantityText?: string | null; unitPriceText?: string | null }>>((acc, price) => {
           const hasSale = typeof price.sale === "number" && price.sale > 0 && price.sale < price.price;
           acc[price.storeId] = {
             price: hasSale ? price.sale as number : price.price,
             originalPrice: hasSale ? price.price : undefined,
             saleDate: hasSale ? price.saleDate : undefined,
+            quantityText: price.quantityText ?? null,
+            unitPriceText: price.unitPriceText ?? null,
           };
           return acc;
         }, {});
@@ -334,7 +385,12 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
                     <Text style={styles.previewBadge}>{selectedProduct.emoji ?? "PK"}</Text>
                   )}
                 </View>
-                <Text style={styles.productPreviewName} numberOfLines={2}>{selectedProduct.name}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.productPreviewName} numberOfLines={2}>{selectedProduct.name}</Text>
+                  {selectedProduct.brand ? (
+                    <Text style={styles.productPreviewBrand} numberOfLines={1}>{selectedProduct.brand}</Text>
+                  ) : null}
+                </View>
               </View>
 
               <Text style={styles.sectionLabel}>{t("addProduct.whereToBuy")}</Text>
@@ -355,6 +411,11 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
                     <View style={{ flex: 1 }}>
                       <Text style={styles.storeName}>{store.name}</Text>
                       <Text style={styles.storeSub}>{index === 0 ? t("addProduct.bestPrice") : t("addProduct.priceAvailable")}</Text>
+                      {pricesByStore[store.id]?.quantityText || pricesByStore[store.id]?.unitPriceText ? (
+                        <Text style={styles.storeMeta} numberOfLines={1}>
+                          {[pricesByStore[store.id]?.quantityText, pricesByStore[store.id]?.unitPriceText].filter(Boolean).join(" · ")}
+                        </Text>
+                      ) : null}
                     </View>
                     <View style={{ alignItems: "flex-end" }}>
                       <Text style={styles.storePrice}>{formatCurrency(pricesByStore[store.id]?.price ?? 0, i18n.language)}</Text>
@@ -389,9 +450,33 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
                     {loadingProducts && <ActivityIndicator size="small" color={Colors.primary600} />}
                   </View>
                   <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-                    {products.length > 0
-                      ? products.map((product) => <ProductRow key={product.id} product={product} onPress={() => setSelectedProduct(product)} />)
-                      : <Text style={styles.emptyText}>{query.trim() ? t("addProduct.noProducts") : t("addProduct.typeToSearch")}</Text>}
+                    {products.length > 0 ? (
+                      <>
+                        {products.map((product) => (
+                          <ProductRow key={product.id} product={product} onPress={() => setSelectedProduct(product)} />
+                        ))}
+
+                        {(hasMoreProducts || loadingMoreProducts) && (
+                          <TouchableOpacity
+                            style={styles.loadMoreButton}
+                            onPress={() => void loadMoreProducts()}
+                            disabled={loadingMoreProducts}
+                            activeOpacity={0.9}
+                          >
+                            {loadingMoreProducts ? (
+                              <View style={styles.loadMoreInner}>
+                                <ActivityIndicator size="small" color={Colors.gray400} />
+                                <Text style={styles.loadMoreText}>{t("common.loading")}</Text>
+                              </View>
+                            ) : (
+                              <Text style={styles.loadMoreText}>{t("common.loadMore")}</Text>
+                            )}
+                          </TouchableOpacity>
+                        )}
+                      </>
+                    ) : (
+                      <Text style={styles.emptyText}>{query.trim() ? t("addProduct.noProducts") : t("addProduct.typeToSearch")}</Text>
+                    )}
                   </ScrollView>
                 </>
               )}
@@ -427,9 +512,33 @@ export function AddProductModal({ visible, onClose, onAddItem }: AddProductModal
                   {selectedSubCat && (
                     loadingProducts
                       ? <ActivityIndicator color="#10B981" style={{ marginTop: 24 }} />
-                      : products.length > 0
-                        ? products.map((product) => <ProductRow key={product.id} product={product} onPress={() => setSelectedProduct(product)} />)
-                        : <Text style={styles.emptyText}>{t("addProduct.noCategoryProducts")}</Text>
+                      : products.length > 0 ? (
+                          <>
+                            {products.map((product) => (
+                              <ProductRow key={product.id} product={product} onPress={() => setSelectedProduct(product)} />
+                            ))}
+
+                            {(hasMoreProducts || loadingMoreProducts) && (
+                              <TouchableOpacity
+                                style={styles.loadMoreButton}
+                                onPress={() => void loadMoreProducts()}
+                                disabled={loadingMoreProducts}
+                                activeOpacity={0.9}
+                              >
+                                {loadingMoreProducts ? (
+                                  <View style={styles.loadMoreInner}>
+                                    <ActivityIndicator size="small" color={Colors.gray400} />
+                                    <Text style={styles.loadMoreText}>{t("common.loading")}</Text>
+                                  </View>
+                                ) : (
+                                  <Text style={styles.loadMoreText}>{t("common.loadMore")}</Text>
+                                )}
+                              </TouchableOpacity>
+                            )}
+                          </>
+                        ) : (
+                          <Text style={styles.emptyText}>{t("addProduct.noCategoryProducts")}</Text>
+                        )
                   )}
                 </ScrollView>
               )}
@@ -457,16 +566,21 @@ const styles = StyleSheet.create({
   scrollContent: { gap: 10, paddingBottom: 8 },
   catScrollContent: { paddingBottom: 8 },
   catGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
+  loadMoreButton: { borderRadius: Radii["2xl"], borderWidth: 2, borderColor: Colors.gray100, backgroundColor: Colors.surface, paddingVertical: 14, paddingHorizontal: 14, alignItems: "center", justifyContent: "center" },
+  loadMoreInner: { flexDirection: "row", alignItems: "center", gap: 8 },
+  loadMoreText: { fontSize: 13, fontWeight: "800", color: Colors.gray700 },
   emptyText: { textAlign: "center", fontSize: Typography.base, color: Colors.gray500, paddingVertical: 24 },
   sectionLabel: { fontSize: 12, fontWeight: "600", color: Colors.gray500, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 12 },
   productPreview: { flexDirection: "row", alignItems: "center", gap: 14, backgroundColor: Colors.primary50, borderRadius: Radii["2xl"], padding: 14, marginBottom: 20 },
   productPreviewEmoji: { width: 52, height: 52, borderRadius: Radii.xl, backgroundColor: Colors.primary100, alignItems: "center", justifyContent: "center" },
   previewBadge: { fontSize: 16, fontWeight: "800", color: Colors.gray900 },
   productPreviewName: { flex: 1, fontSize: 15, fontWeight: "700", color: Colors.gray900 },
+  productPreviewBrand: { marginTop: 2, fontSize: 12, color: Colors.gray500 },
   storeRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: Radii["2xl"], backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.gray100, marginBottom: 10 },
   storeIcon: { width: 42, height: 42, borderRadius: Radii.lg, backgroundColor: Colors.primary50, alignItems: "center", justifyContent: "center" },
   storeName: { fontSize: Typography.md, fontWeight: "700", color: Colors.gray900 },
   storeSub: { fontSize: Typography.sm, color: Colors.gray500, marginTop: 2 },
+  storeMeta: { fontSize: 11, color: Colors.gray400, marginTop: 2 },
   storePrice: { fontSize: Typography.lg, fontWeight: "800", color: Colors.success500 },
   storeOriginalPrice: { fontSize: Typography.sm, color: Colors.gray400, textDecorationLine: "line-through", marginTop: 2 },
 });
@@ -482,6 +596,7 @@ const productStyles = StyleSheet.create({
   emoji: { width: 42, height: 42, borderRadius: Radii.lg, backgroundColor: Colors.primary50, alignItems: "center", justifyContent: "center" },
   fallbackBadge: { fontSize: 12, fontWeight: "800", color: Colors.gray900 },
   name: { fontSize: Typography.md, fontWeight: "700", color: Colors.gray900 },
+  brand: { marginTop: 2, fontSize: Typography.sm, color: Colors.gray500 },
   sub: { fontSize: Typography.sm, color: Colors.gray500, marginTop: 2 },
 });
 

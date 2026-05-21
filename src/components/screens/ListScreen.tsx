@@ -14,10 +14,13 @@ import { getCategoryImage } from "../../utils/categoryImages";
 
 interface EnrichedItem extends ListItemResponse {
   name: string;
+  brand?: string | null;
   image?: string;
   categoryId?: string;
   emoji: string;
   storeName: string;
+  quantityText?: string | null;
+  unitPriceText?: string | null;
   unitPrice: number;
   originalUnitPrice?: number;
   discountPercent?: number;
@@ -53,7 +56,7 @@ export function ListScreen() {
 
       const productsMap: Record<string, Product> = {};
       const storesMap: Record<string, StoreResponse> = {};
-      const priceByProductStore = new Map<string, { unitPrice: number; originalUnitPrice?: number; discountPercent?: number; saleDate?: string }>();
+      const priceByProductStore = new Map<string, { unitPrice: number; originalUnitPrice?: number; discountPercent?: number; saleDate?: string; quantityText?: string | null; unitPriceText?: string | null }>();
 
       if (productIds.length) {
         const products = await getProductsByIds(productIds).catch(() => []);
@@ -93,6 +96,8 @@ export function ListScreen() {
               originalUnitPrice,
               discountPercent,
               saleDate: hasSale ? best.saleDate : undefined,
+              quantityText: best.quantityText ?? null,
+              unitPriceText: best.unitPriceText ?? null,
             });
           } catch {
             priceByProductStore.set(key, { unitPrice: 0 });
@@ -103,10 +108,13 @@ export function ListScreen() {
       const enriched: EnrichedItem[] = rawItems.map((item) => ({
         ...item,
         name: productsMap[item.productId]?.name ?? "Unknown Product",
+        brand: productsMap[item.productId]?.brand ?? null,
         image: productsMap[item.productId]?.image,
         categoryId: productsMap[item.productId]?.categoryId,
         emoji: productsMap[item.productId]?.emoji ?? "PK",
         storeName: storesMap[item.storeId]?.name ?? "Unknown Store",
+        quantityText: priceByProductStore.get(`${item.productId}::${item.storeId}`)?.quantityText ?? null,
+        unitPriceText: priceByProductStore.get(`${item.productId}::${item.storeId}`)?.unitPriceText ?? null,
         unitPrice: priceByProductStore.get(`${item.productId}::${item.storeId}`)?.unitPrice ?? item.price,
         originalUnitPrice: priceByProductStore.get(`${item.productId}::${item.storeId}`)?.originalUnitPrice,
         discountPercent: priceByProductStore.get(`${item.productId}::${item.storeId}`)?.discountPercent,
@@ -255,7 +263,15 @@ export function ListScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.itemName, item.checked && styles.itemNameChecked]} numberOfLines={1}>{item.name}</Text>
-                <Text style={styles.itemSub}>{item.quantity} un | {item.storeName}</Text>
+                {item.brand ? <Text style={styles.itemBrand} numberOfLines={1}>{item.brand}</Text> : null}
+                <Text style={styles.itemSub}>
+                  {[
+                    `${item.quantity} un`,
+                    item.quantityText ?? undefined,
+                    item.unitPriceText ?? undefined,
+                    item.storeName,
+                  ].filter(Boolean).join(" · ")}
+                </Text>
                 {item.saleDate ? (
                   <Text style={styles.saleDateText}>Validade: {formatSaleDate(item.saleDate)}</Text>
                 ) : null}
@@ -323,6 +339,7 @@ const styles = StyleSheet.create({
   itemImage: { width: "100%", height: "100%" },
   itemName: { fontSize: 14, fontWeight: "600", color: Colors.gray900 },
   itemNameChecked: { textDecorationLine: "line-through", color: Colors.gray400 },
+  itemBrand: { fontSize: 12, color: Colors.gray500, marginTop: 1 },
   itemSub: { fontSize: 12, color: Colors.gray400 },
   saleDateText: { fontSize: 11, color: Colors.gray500, marginTop: 2 },
   priceColumn: { alignItems: "flex-end", minWidth: 68 },

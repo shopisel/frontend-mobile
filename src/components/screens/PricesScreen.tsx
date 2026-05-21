@@ -19,6 +19,8 @@ type StoreRow = {
   address?: string;
   city?: string;
   price: number;
+  quantityText?: string | null;
+  unitPriceText?: string | null;
   distanceKm?: number;
   originalPrice?: number;
   discountPercent?: number;
@@ -29,6 +31,8 @@ type PricesScreenProps = {
   favoriteProductIds: string[];
   onToggleFavorite: (product: Product) => Promise<void>;
 };
+
+const PRODUCTS_PAGE_SIZE = 50;
 
 const getStoreDisplayName = (store: StoreRow) => {
   const name = store.name.trim();
@@ -64,6 +68,8 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScr
   const [isLoadingCats, setIsLoadingCats] = useState(false);
   const [isLoadingSubCats, setIsLoadingSubCats] = useState(false);
   const [isLoadingProducts, setIsLoadingProducts] = useState(false);
+  const [isLoadingMoreProducts, setIsLoadingMoreProducts] = useState(false);
+  const [hasMoreProducts, setHasMoreProducts] = useState(false);
   const [isLoadingStores, setIsLoadingStores] = useState(false);
   const [isLoadingRelatedProducts, setIsLoadingRelatedProducts] = useState(false);
   const [favoritePendingId, setFavoritePendingId] = useState<string | null>(null);
@@ -111,6 +117,8 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScr
     setProducts([]);
     setSelectedProduct(null);
     setStoreRows([]);
+    setHasMoreProducts(false);
+    setIsLoadingMoreProducts(false);
   };
 
   const handleSearchChange = (value: string) => {
@@ -199,15 +207,18 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScr
     let cancelled = false;
     const timer = setTimeout(async () => {
       setIsLoadingProducts(true);
+      setHasMoreProducts(false);
       setError(null);
       try {
-        const data = await searchProducts(query);
+        const data = await searchProducts(query, PRODUCTS_PAGE_SIZE, 0);
         if (cancelled) return;
         setProducts(data ?? []);
+        setHasMoreProducts((data ?? []).length === PRODUCTS_PAGE_SIZE);
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : t("errors.requestFailed"));
           setProducts([]);
+          setHasMoreProducts(false);
         }
       } finally {
         if (!cancelled) setIsLoadingProducts(false);
@@ -227,15 +238,18 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScr
 
     const loadProducts = async (subCategoryId: string) => {
       setIsLoadingProducts(true);
+      setHasMoreProducts(false);
       setError(null);
       try {
-        const data = await getProductsByCategory(subCategoryId);
+        const data = await getProductsByCategory(subCategoryId, PRODUCTS_PAGE_SIZE, 0);
         if (cancelled) return;
         setProducts(data ?? []);
+        setHasMoreProducts((data ?? []).length === PRODUCTS_PAGE_SIZE);
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : t("errors.requestFailed"));
           setProducts([]);
+          setHasMoreProducts(false);
         }
       } finally {
         if (!cancelled) setIsLoadingProducts(false);
@@ -252,6 +266,35 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScr
       cancelled = true;
     };
   }, [getProductsByCategory, searchQuery, selectedSubCat, t]);
+
+  const loadMoreProducts = async () => {
+    if (isLoadingProducts || isLoadingMoreProducts || !hasMoreProducts) return;
+
+    const query = searchQuery.trim();
+    const currentSkip = products.length;
+
+    setIsLoadingMoreProducts(true);
+    setError(null);
+
+    try {
+      if (query) {
+        const data = await searchProducts(query, PRODUCTS_PAGE_SIZE, currentSkip);
+        setProducts((prev) => [...prev, ...(data ?? [])]);
+        setHasMoreProducts((data ?? []).length === PRODUCTS_PAGE_SIZE);
+        return;
+      }
+
+      if (selectedSubCat) {
+        const data = await getProductsByCategory(selectedSubCat.id, PRODUCTS_PAGE_SIZE, currentSkip);
+        setProducts((prev) => [...prev, ...(data ?? [])]);
+        setHasMoreProducts((data ?? []).length === PRODUCTS_PAGE_SIZE);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("errors.requestFailed"));
+    } finally {
+      setIsLoadingMoreProducts(false);
+    }
+  };
 
   useEffect(() => {
     if (!products.length) {
@@ -326,6 +369,8 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScr
             address: displayStore?.address,
             city: displayStore?.city,
             price: hasSale ? price.sale as number : price.price,
+            quantityText: price.quantityText ?? null,
+            unitPriceText: price.unitPriceText ?? null,
             distanceKm:
               userLocation && typeof displayStore?.latitude === "number" && typeof displayStore?.longitude === "number"
                 ? calculateDistanceKm(userLocation.latitude, userLocation.longitude, displayStore.latitude, displayStore.longitude)
@@ -545,14 +590,38 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScr
                           <Text style={styles.productFallback}>{product.emoji ?? "PK"}</Text>
                         )}
                       </View>
-                      <Text style={[styles.productName, isSelected && styles.productNameActive]} numberOfLines={2}>
-                        {product.name}
-                      </Text>
+                      <View style={styles.productInfo}>
+                        <Text style={[styles.productName, isSelected && styles.productNameActive]} numberOfLines={2}>
+                          {product.name}
+                        </Text>
+                        {product.brand ? (
+                          <Text style={styles.productBrand} numberOfLines={1}>
+                            {product.brand}
+                          </Text>
+                        ) : null}
+                      </View>
                       {isFavorite ? <Star size={14} color="#F59E0B" fill="#F59E0B" /> : null}
                     </View>
                   </TouchableOpacity>
                 );
               })}
+              {(hasMoreProducts || isLoadingMoreProducts) && (
+                <TouchableOpacity
+                  style={styles.loadMoreButton}
+                  onPress={() => void loadMoreProducts()}
+                  disabled={isLoadingMoreProducts}
+                  activeOpacity={0.9}
+                >
+                  {isLoadingMoreProducts ? (
+                    <View style={styles.loadMoreInner}>
+                      <Loader size={16} color={colors.gray400} />
+                      <Text style={styles.loadMoreText}>{t("common.loading")}</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.loadMoreText}>{t("common.loadMore")}</Text>
+                  )}
+                </TouchableOpacity>
+              )}
             </View>
           ) : (
             <Text style={styles.emptyStateText}>{emptyProductsMessage}</Text>
@@ -570,10 +639,15 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScr
                     <Text style={styles.detailFallback}>{selectedProduct.emoji ?? "PK"}</Text>
                   )}
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.detailCategory}>{selectedSubCat?.name ?? selectedMainCat?.name ?? t("common.all")}</Text>
-                  <Text style={styles.detailName}>{selectedProduct.name}</Text>
-                </View>
+                 <View style={{ flex: 1 }}>
+                   <Text style={styles.detailCategory}>{selectedSubCat?.name ?? selectedMainCat?.name ?? t("common.all")}</Text>
+                   <Text style={styles.detailName}>{selectedProduct.name}</Text>
+                   {(selectedProduct.brand || sortedStores[0]?.unitPriceText) ? (
+                     <Text style={styles.detailMeta} numberOfLines={1}>
+                       {[selectedProduct.brand, sortedStores[0]?.unitPriceText].filter(Boolean).join(" | ")}
+                     </Text>
+                   ) : null}
+                 </View>
                 <TouchableOpacity
                   style={styles.favoriteButton}
                   onPress={() => void handleToggleFavorite(selectedProduct)}
@@ -719,6 +793,11 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite }: PricesScr
                           {[store.address, store.city].filter(Boolean).join(", ")}
                         </Text>
                       ) : null}
+                      {store.quantityText || store.unitPriceText ? (
+                        <Text style={styles.storeMeta} numberOfLines={1}>
+                          {[store.quantityText, store.unitPriceText].filter(Boolean).join(" · ")}
+                        </Text>
+                      ) : null}
                       {typeof store.distanceKm === "number" ? (
                         <Text style={styles.storeDistance}>{t("prices.distanceAway", { value: store.distanceKm.toFixed(1) })}</Text>
                       ) : null}
@@ -780,8 +859,13 @@ function createStyles(colors: ReturnType<typeof useTheme>["colors"]) {
   productImageBox: { width: 44, height: 44, borderRadius: Radii.xl, backgroundColor: colors.gray50, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   productImage: { width: "100%", height: "100%" },
   productFallback: { fontSize: 12, fontWeight: "800", color: colors.gray900 },
-  productName: { flex: 1, fontSize: 13, fontWeight: "700", color: colors.gray900, lineHeight: 18 },
+  productInfo: { flex: 1, minWidth: 0 },
+  productName: { fontSize: 13, fontWeight: "700", color: colors.gray900, lineHeight: 18 },
   productNameActive: { color: colors.primary600 },
+  productBrand: { marginTop: 2, fontSize: 12, color: colors.gray500 },
+  loadMoreButton: { width: "100%", borderRadius: Radii["2xl"], borderWidth: 2, borderColor: colors.gray100, backgroundColor: colors.surface, paddingVertical: 14, paddingHorizontal: 14, alignItems: "center", justifyContent: "center" },
+  loadMoreInner: { flexDirection: "row", alignItems: "center", gap: 8 },
+  loadMoreText: { fontSize: 13, fontWeight: "800", color: colors.gray700 },
   emptyStateText: { fontSize: 13, fontWeight: "600", color: colors.gray400 },
   detailCard: { borderRadius: Radii["3xl"], padding: 20, backgroundColor: colors.primary600, shadowColor: colors.primary600, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 8 },
   detailTopRow: { flexDirection: "row", alignItems: "center", gap: 16 },
@@ -790,6 +874,7 @@ function createStyles(colors: ReturnType<typeof useTheme>["colors"]) {
   detailFallback: { fontSize: 16, fontWeight: "800", color: colors.surface },
   detailCategory: { fontSize: 12, color: "#C7D2FE" },
   detailName: { fontSize: 16, fontWeight: "700", color: colors.surface },
+  detailMeta: { marginTop: 2, fontSize: 12, color: "#E0E7FF" },
   favoriteButton: {
     width: 40,
     height: 40,
@@ -840,6 +925,7 @@ function createStyles(colors: ReturnType<typeof useTheme>["colors"]) {
   rankTextActive: { color: colors.surface },
   storeName: { fontSize: 14, fontWeight: "700", color: colors.gray900 },
   storeAddress: { fontSize: 11, color: colors.gray500, marginTop: 2, lineHeight: 15 },
+  storeMeta: { fontSize: 11, color: colors.gray400, marginTop: 2 },
   storeDistance: { fontSize: 11, color: colors.gray500, marginTop: 2 },
   storePriceColumn: { flexShrink: 0, alignItems: "flex-end" },
   storePrice: { fontSize: 20, fontWeight: "800", color: colors.gray900 },
