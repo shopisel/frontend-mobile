@@ -188,7 +188,6 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite, initialProd
     if (locationError) setError(locationError);
   }, [locationError]);
 
-
   useEffect(() => {
     let cancelled = false;
 
@@ -534,7 +533,7 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite, initialProd
       : t("prices.noProductsToShow");
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}> 
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <Text style={styles.title}>{t("prices.title")}</Text>
         <Text style={styles.subtitle}>{t("prices.subtitle")}</Text>
@@ -614,42 +613,44 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite, initialProd
               <Text style={styles.loadingText}>{t("prices.loadingProducts")}</Text>
             </View>
           ) : products.length > 0 ? (
-            <View style={styles.productsWrap}>
-              {products.map((product) => {
-                const isSelected = selectedProduct?.id === product.id;
-                const imageSource = getProductImageSource(product);
-                const isFavorite = favoriteProductIds.includes(product.id);
+            <>
+              <View style={styles.productsWrap}>
+                {products.map((product) => {
+                  const isSelected = selectedProduct?.id === product.id;
+                  const imageSource = getProductImageSource(product);
+                  const isFavorite = favoriteProductIds.includes(product.id);
 
-                return (
-                  <TouchableOpacity
-                    key={product.id}
-                    style={[styles.productCard, isSelected && styles.productCardActive]}
-                    onPress={() => setSelectedProduct(product)}
-                    activeOpacity={0.85}
-                  >
-                    <View style={styles.productRow}>
-                      <View style={styles.productImageBox}>
-                        {imageSource ? (
-                          <Image source={imageSource} style={styles.productImage} resizeMode="cover" />
-                        ) : (
-                          <Text style={styles.productFallback}>{product.emoji ?? "PK"}</Text>
-                        )}
-                      </View>
-                      <View style={styles.productInfo}>
-                        <Text style={[styles.productName, isSelected && styles.productNameActive]} numberOfLines={2}>
-                          {product.name}
-                        </Text>
-                        {product.brand ? (
-                          <Text style={styles.productBrand} numberOfLines={1}>
-                            {product.brand}
+                  return (
+                    <TouchableOpacity
+                      key={product.id}
+                      style={[styles.productCard, isSelected && styles.productCardActive]}
+                      onPress={() => setSelectedProduct(product)}
+                      activeOpacity={0.85}
+                    >
+                      <View style={styles.productRow}>
+                        <View style={styles.productImageBox}>
+                          {imageSource ? (
+                            <Image source={imageSource} style={styles.productImage} resizeMode="cover" />
+                          ) : (
+                            <Text style={styles.productFallback}>{product.emoji ?? "PK"}</Text>
+                          )}
+                        </View>
+                        <View style={styles.productInfo}>
+                          <Text style={[styles.productName, isSelected && styles.productNameActive]} numberOfLines={2}>
+                            {product.name}
                           </Text>
-                        ) : null}
+                          {product.brand ? (
+                            <Text style={styles.productBrand} numberOfLines={1}>
+                              {product.brand}
+                            </Text>
+                          ) : null}
+                        </View>
+                        {isFavorite ? <Star size={14} color="#F59E0B" fill="#F59E0B" /> : null}
                       </View>
-                      {isFavorite ? <Star size={14} color="#F59E0B" fill="#F59E0B" /> : null}
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
               {(hasMoreProducts || isLoadingMoreProducts) && (
                 <TouchableOpacity
                   style={styles.loadMoreButton}
@@ -667,7 +668,7 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite, initialProd
                   )}
                 </TouchableOpacity>
               )}
-            </View>
+            </>
           ) : (
             <Text style={styles.emptyStateText}>{emptyProductsMessage}</Text>
           )}
@@ -684,15 +685,15 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite, initialProd
                     <Text style={styles.detailFallback}>{selectedProduct.emoji ?? "PK"}</Text>
                   )}
                 </View>
-                 <View style={{ flex: 1 }}>
-                   <Text style={styles.detailCategory}>{selectedSubCat?.name ?? selectedMainCat?.name ?? t("common.all")}</Text>
-                   <Text style={styles.detailName}>{selectedProduct.name}</Text>
-                   {(selectedProduct.brand || sortedStores[0]?.unitPriceText) ? (
-                     <Text style={styles.detailMeta} numberOfLines={1}>
-                       {[selectedProduct.brand, sortedStores[0]?.unitPriceText].filter(Boolean).join(" | ")}
-                     </Text>
-                   ) : null}
-                 </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.detailCategory}>{selectedSubCat?.name ?? selectedMainCat?.name ?? t("common.all")}</Text>
+                  <Text style={styles.detailName}>{selectedProduct.name}</Text>
+                  {(selectedProduct.brand || sortedStores[0]?.unitPriceText) ? (
+                    <Text style={styles.detailMeta} numberOfLines={1}>
+                      {[selectedProduct.brand, sortedStores[0]?.unitPriceText].filter(Boolean).join(" | ")}
+                    </Text>
+                  ) : null}
+                </View>
                 <TouchableOpacity
                   style={styles.favoriteButton}
                   onPress={() => void handleToggleFavorite(selectedProduct)}
@@ -872,110 +873,110 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite, initialProd
 
 function createStyles(colors: ReturnType<typeof useTheme>["colors"]) {
   return StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  header: { backgroundColor: colors.surface, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16 },
-  title: { fontSize: 24, fontWeight: "700", color: colors.gray900 },
-  subtitle: { fontSize: 14, color: colors.gray400, marginBottom: 16 },
-  searchBox: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: colors.gray50, borderRadius: Radii["2xl"], paddingHorizontal: 16, height: 44 },
-  searchInput: { flex: 1, fontSize: Typography.base, color: colors.gray900 },
-  catScroll: { backgroundColor: colors.surface, paddingVertical: 10, maxHeight: 56 },
-  subCatScroll: { backgroundColor: colors.surface, paddingBottom: 10, maxHeight: 56 },
-  catScrollContent: { paddingHorizontal: 20, gap: 8, alignItems: "center" },
-  catChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: Radii.lg, backgroundColor: colors.gray100 },
-  catChipActive: { backgroundColor: colors.primary600 },
-  catText: { fontSize: 13, fontWeight: "600", color: colors.gray500 },
-  catTextActive: { color: colors.surface },
-  subCatChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: Radii.lg, backgroundColor: colors.gray100 },
-  subCatChipActive: { backgroundColor: colors.gray900 },
-  subCatText: { fontSize: 13, fontWeight: "600", color: colors.gray500 },
-  subCatTextActive: { color: colors.surface },
-  loadingInline: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 6 },
-  loadingInlineText: { fontSize: 13, fontWeight: "600", color: colors.gray400 },
-  emptyInline: { fontSize: 13, fontWeight: "600", color: colors.gray400, paddingVertical: 8 },
-  section: { paddingHorizontal: 20, paddingTop: 16 },
-  sectionLabel: { fontSize: 12, fontWeight: "600", color: colors.gray500, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 10 },
-  errorText: { marginBottom: 10, fontSize: 12, fontWeight: "600", color: "#DC2626" },
-  loadingRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 8 },
-  loadingText: { fontSize: 13, fontWeight: "600", color: colors.gray400 },
-  productsWrap: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  productCard: { width: "48.5%", borderRadius: Radii["2xl"], borderWidth: 2, borderColor: colors.gray100, backgroundColor: colors.surface, padding: 12 },
-  productCardActive: { borderColor: colors.primary600, backgroundColor: colors.primary50 },
-  productRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  productImageBox: { width: 44, height: 44, borderRadius: Radii.xl, backgroundColor: colors.gray50, alignItems: "center", justifyContent: "center", overflow: "hidden" },
-  productImage: { width: "100%", height: "100%" },
-  productFallback: { fontSize: 12, fontWeight: "800", color: colors.gray900 },
-  productInfo: { flex: 1, minWidth: 0 },
-  productName: { fontSize: 13, fontWeight: "700", color: colors.gray900, lineHeight: 18 },
-  productNameActive: { color: colors.primary600 },
-  productBrand: { marginTop: 2, fontSize: 12, color: colors.gray500 },
-  loadMoreButton: { width: "100%", borderRadius: Radii["2xl"], borderWidth: 2, borderColor: colors.gray100, backgroundColor: colors.surface, paddingVertical: 14, paddingHorizontal: 14, alignItems: "center", justifyContent: "center" },
-  loadMoreInner: { flexDirection: "row", alignItems: "center", gap: 8 },
-  loadMoreText: { fontSize: 13, fontWeight: "800", color: colors.gray700 },
-  emptyStateText: { fontSize: 13, fontWeight: "600", color: colors.gray400 },
-  detailCard: { borderRadius: Radii["3xl"], padding: 20, backgroundColor: colors.primary600, shadowColor: colors.primary600, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 8 },
-  detailTopRow: { flexDirection: "row", alignItems: "center", gap: 16 },
-  detailImageBox: { width: 56, height: 56, borderRadius: Radii.xl, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center", overflow: "hidden" },
-  detailImage: { width: "100%", height: "100%" },
-  detailFallback: { fontSize: 16, fontWeight: "800", color: colors.surface },
-  detailCategory: { fontSize: 12, color: "#C7D2FE" },
-  detailName: { fontSize: 16, fontWeight: "700", color: colors.surface },
-  detailMeta: { marginTop: 2, fontSize: 12, color: "#E0E7FF" },
-  favoriteButton: {
-    width: 40,
-    height: 40,
-    borderRadius: Radii.xl,
-    backgroundColor: "rgba(255,255,255,0.18)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  detailStatsRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 16 },
-  detailLabel: { fontSize: 11, color: "#C7D2FE" },
-  detailPrice: { fontSize: 26, fontWeight: "800", color: colors.surface },
-  detailSavingsRow: { flexDirection: "row", alignItems: "center", gap: 4 },
-  detailSavings: { fontSize: 18, fontWeight: "700", color: "#6EE7B7" },
-  relatedSection: { marginTop: 18, gap: 10 },
-  relatedSectionTitle: { fontSize: 12, fontWeight: "700", color: "#E0E7FF", textTransform: "uppercase", letterSpacing: 0.5 },
-  relatedLoadingRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  relatedLoadingText: { fontSize: 12, color: "#E0E7FF" },
-  relatedScrollContent: { gap: 10, paddingRight: 4 },
-  relatedProductCard: { width: 126, borderRadius: Radii.xl, backgroundColor: "rgba(255,255,255,0.12)", padding: 10, gap: 8 },
-  relatedProductImageBox: { height: 72, borderRadius: Radii.lg, backgroundColor: "rgba(255,255,255,0.18)", alignItems: "center", justifyContent: "center", overflow: "hidden" },
-  relatedProductImage: { width: "100%", height: "100%" },
-  relatedProductFallback: { fontSize: 13, fontWeight: "800", color: colors.surface },
-  relatedProductName: { fontSize: 12, fontWeight: "700", color: colors.surface, lineHeight: 16 },
-  relatedEmptyText: { fontSize: 12, color: "#E0E7FF" },
-  placeholderCard: { backgroundColor: colors.surface, borderRadius: Radii["3xl"], padding: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 },
-  placeholderTitle: { fontSize: 14, fontWeight: "700", color: colors.gray900 },
-  placeholderText: { marginTop: 4, fontSize: 12, color: colors.gray400 },
-  sortRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, marginTop: 16, marginBottom: 12 },
-  storeCountRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  storeCount: { fontSize: 14, fontWeight: "700", color: colors.gray700 },
-  sortButtonsRow: { flexDirection: "row", gap: 8 },
-  sortBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: colors.gray100, borderRadius: Radii.xl },
-  sortBtnText: { fontSize: 12, fontWeight: "600", color: colors.gray600 },
-  mapBtnActive: { backgroundColor: colors.primary600 },
-  mapBtnTextActive: { color: colors.surface },
-  mapPlaceholder: { marginHorizontal: 20, marginBottom: 16, height: 160, borderRadius: Radii["2xl"], backgroundColor: colors.primary50, position: "relative", overflow: "hidden" },
-  mapPin: { position: "absolute", paddingHorizontal: 8, paddingVertical: 4, borderRadius: Radii.lg, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 4, elevation: 4 },
-  userPin: { position: "absolute", bottom: 12, right: 12, width: 32, height: 32, borderRadius: 16, backgroundColor: "#3B82F6", alignItems: "center", justifyContent: "center" },
-  storesSection: { paddingHorizontal: 20, paddingBottom: 32, gap: 12 },
-  storeCard: { backgroundColor: colors.surface, borderRadius: Radii["2xl"], padding: 16, borderWidth: 1, borderColor: colors.gray100, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
-  storeCardBest: { borderColor: "#D4AF37", borderWidth: 2, shadowColor: "#D4AF37", shadowOpacity: 0.12 },
-  storeHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
-  storeLeftRow: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12 },
-  storeInfo: { flex: 1, minWidth: 0 },
-  rankBadge: { width: 32, height: 32, borderRadius: Radii.lg, backgroundColor: colors.gray100, alignItems: "center", justifyContent: "center" },
-  rankBadgeActive: { backgroundColor: colors.primary600 },
-  rankText: { fontSize: 13, fontWeight: "700", color: colors.gray500 },
-  rankTextActive: { color: colors.surface },
-  storeName: { fontSize: 14, fontWeight: "700", color: colors.gray900 },
-  storeAddress: { fontSize: 11, color: colors.gray500, marginTop: 2, lineHeight: 15 },
-  storeMeta: { fontSize: 11, color: colors.gray400, marginTop: 2 },
-  storeDistance: { fontSize: 11, color: colors.gray500, marginTop: 2 },
-  storePriceColumn: { flexShrink: 0, alignItems: "flex-end" },
-  storePrice: { fontSize: 20, fontWeight: "800", color: colors.gray900 },
-  storeOriginalPrice: { fontSize: 11, color: colors.gray400, textDecorationLine: "line-through", marginTop: 2 },
-  storeDiscount: { fontSize: 11, fontWeight: "700", color: colors.success500, marginTop: 1 },
-  storeSaleDate: { fontSize: 11, color: colors.gray500, marginTop: 1 },
+    container: { flex: 1, backgroundColor: colors.background },
+    header: { backgroundColor: colors.surface, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16 },
+    title: { fontSize: 24, fontWeight: "700", color: colors.gray900 },
+    subtitle: { fontSize: 14, color: colors.gray400, marginBottom: 16 },
+    searchBox: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: colors.gray50, borderRadius: Radii["2xl"], paddingHorizontal: 16, height: 44 },
+    searchInput: { flex: 1, fontSize: Typography.base, color: colors.gray900 },
+    catScroll: { backgroundColor: colors.surface, paddingVertical: 10, maxHeight: 56 },
+    subCatScroll: { backgroundColor: colors.surface, paddingBottom: 10, maxHeight: 56 },
+    catScrollContent: { paddingHorizontal: 20, gap: 8, alignItems: "center" },
+    catChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: Radii.lg, backgroundColor: colors.gray100 },
+    catChipActive: { backgroundColor: colors.primary600 },
+    catText: { fontSize: 13, fontWeight: "600", color: colors.gray500 },
+    catTextActive: { color: colors.surface },
+    subCatChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: Radii.lg, backgroundColor: colors.gray100 },
+    subCatChipActive: { backgroundColor: colors.gray900 },
+    subCatText: { fontSize: 13, fontWeight: "600", color: colors.gray500 },
+    subCatTextActive: { color: colors.surface },
+    loadingInline: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 6 },
+    loadingInlineText: { fontSize: 13, fontWeight: "600", color: colors.gray400 },
+    emptyInline: { fontSize: 13, fontWeight: "600", color: colors.gray400, paddingVertical: 8 },
+    section: { paddingHorizontal: 20, paddingTop: 16 },
+    sectionLabel: { fontSize: 12, fontWeight: "600", color: colors.gray500, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 10 },
+    errorText: { marginBottom: 10, fontSize: 12, fontWeight: "600", color: "#DC2626" },
+    loadingRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 8 },
+    loadingText: { fontSize: 13, fontWeight: "600", color: colors.gray400 },
+    productsWrap: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+    productCard: { width: "48.5%", borderRadius: Radii["2xl"], borderWidth: 2, borderColor: colors.gray100, backgroundColor: colors.surface, padding: 12 },
+    productCardActive: { borderColor: colors.primary600, backgroundColor: colors.primary50 },
+    productRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+    productImageBox: { width: 44, height: 44, borderRadius: Radii.xl, backgroundColor: colors.gray50, alignItems: "center", justifyContent: "center", overflow: "hidden" },
+    productImage: { width: "100%", height: "100%" },
+    productFallback: { fontSize: 12, fontWeight: "800", color: colors.gray900 },
+    productInfo: { flex: 1, minWidth: 0 },
+    productName: { fontSize: 13, fontWeight: "700", color: colors.gray900, lineHeight: 18 },
+    productNameActive: { color: colors.primary600 },
+    productBrand: { marginTop: 2, fontSize: 12, color: colors.gray500 },
+    loadMoreButton: { width: "100%", borderRadius: Radii["2xl"], borderWidth: 2, borderColor: colors.gray100, backgroundColor: colors.surface, paddingVertical: 14, paddingHorizontal: 14, alignItems: "center", justifyContent: "center", marginTop: 10 },
+    loadMoreInner: { flexDirection: "row", alignItems: "center", gap: 8 },
+    loadMoreText: { fontSize: 13, fontWeight: "800", color: colors.gray700 },
+    emptyStateText: { fontSize: 13, fontWeight: "600", color: colors.gray400 },
+    detailCard: { borderRadius: Radii["3xl"], padding: 20, backgroundColor: colors.primary600, shadowColor: colors.primary600, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 8 },
+    detailTopRow: { flexDirection: "row", alignItems: "center", gap: 16 },
+    detailImageBox: { width: 56, height: 56, borderRadius: Radii.xl, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center", overflow: "hidden" },
+    detailImage: { width: "100%", height: "100%" },
+    detailFallback: { fontSize: 16, fontWeight: "800", color: colors.surface },
+    detailCategory: { fontSize: 12, color: "#C7D2FE" },
+    detailName: { fontSize: 16, fontWeight: "700", color: colors.surface },
+    detailMeta: { marginTop: 2, fontSize: 12, color: "#E0E7FF" },
+    favoriteButton: {
+      width: 40,
+      height: 40,
+      borderRadius: Radii.xl,
+      backgroundColor: "rgba(255,255,255,0.18)",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    detailStatsRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 16 },
+    detailLabel: { fontSize: 11, color: "#C7D2FE" },
+    detailPrice: { fontSize: 26, fontWeight: "800", color: colors.surface },
+    detailSavingsRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+    detailSavings: { fontSize: 18, fontWeight: "700", color: "#6EE7B7" },
+    relatedSection: { marginTop: 18, gap: 10 },
+    relatedSectionTitle: { fontSize: 12, fontWeight: "700", color: "#E0E7FF", textTransform: "uppercase", letterSpacing: 0.5 },
+    relatedLoadingRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+    relatedLoadingText: { fontSize: 12, color: "#E0E7FF" },
+    relatedScrollContent: { gap: 10, paddingRight: 4 },
+    relatedProductCard: { width: 126, borderRadius: Radii.xl, backgroundColor: "rgba(255,255,255,0.12)", padding: 10, gap: 8 },
+    relatedProductImageBox: { height: 72, borderRadius: Radii.lg, backgroundColor: "rgba(255,255,255,0.18)", alignItems: "center", justifyContent: "center", overflow: "hidden" },
+    relatedProductImage: { width: "100%", height: "100%" },
+    relatedProductFallback: { fontSize: 13, fontWeight: "800", color: colors.surface },
+    relatedProductName: { fontSize: 12, fontWeight: "700", color: colors.surface, lineHeight: 16 },
+    relatedEmptyText: { fontSize: 12, color: "#E0E7FF" },
+    placeholderCard: { backgroundColor: colors.surface, borderRadius: Radii["3xl"], padding: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 },
+    placeholderTitle: { fontSize: 14, fontWeight: "700", color: colors.gray900 },
+    placeholderText: { marginTop: 4, fontSize: 12, color: colors.gray400 },
+    sortRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, marginTop: 16, marginBottom: 12 },
+    storeCountRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+    storeCount: { fontSize: 14, fontWeight: "700", color: colors.gray700 },
+    sortButtonsRow: { flexDirection: "row", gap: 8 },
+    sortBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: colors.gray100, borderRadius: Radii.xl },
+    sortBtnText: { fontSize: 12, fontWeight: "600", color: colors.gray600 },
+    mapBtnActive: { backgroundColor: colors.primary600 },
+    mapBtnTextActive: { color: colors.surface },
+    mapPlaceholder: { marginHorizontal: 20, marginBottom: 16, height: 160, borderRadius: Radii["2xl"], backgroundColor: colors.primary50, position: "relative", overflow: "hidden" },
+    mapPin: { position: "absolute", paddingHorizontal: 8, paddingVertical: 4, borderRadius: Radii.lg, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 4, elevation: 4 },
+    userPin: { position: "absolute", bottom: 12, right: 12, width: 32, height: 32, borderRadius: 16, backgroundColor: "#3B82F6", alignItems: "center", justifyContent: "center" },
+    storesSection: { paddingHorizontal: 20, paddingBottom: 32, gap: 12 },
+    storeCard: { backgroundColor: colors.surface, borderRadius: Radii["2xl"], padding: 16, borderWidth: 1, borderColor: colors.gray100, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
+    storeCardBest: { borderColor: "#D4AF37", borderWidth: 2, shadowColor: "#D4AF37", shadowOpacity: 0.12 },
+    storeHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+    storeLeftRow: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12 },
+    storeInfo: { flex: 1, minWidth: 0 },
+    rankBadge: { width: 32, height: 32, borderRadius: Radii.lg, backgroundColor: colors.gray100, alignItems: "center", justifyContent: "center" },
+    rankBadgeActive: { backgroundColor: colors.primary600 },
+    rankText: { fontSize: 13, fontWeight: "700", color: colors.gray500 },
+    rankTextActive: { color: colors.surface },
+    storeName: { fontSize: 14, fontWeight: "700", color: colors.gray900 },
+    storeAddress: { fontSize: 11, color: colors.gray500, marginTop: 2, lineHeight: 15 },
+    storeMeta: { fontSize: 11, color: colors.gray400, marginTop: 2 },
+    storeDistance: { fontSize: 11, color: colors.gray500, marginTop: 2 },
+    storePriceColumn: { flexShrink: 0, alignItems: "flex-end" },
+    storePrice: { fontSize: 20, fontWeight: "800", color: colors.gray900 },
+    storeOriginalPrice: { fontSize: 11, color: colors.gray400, textDecorationLine: "line-through", marginTop: 2 },
+    storeDiscount: { fontSize: 11, fontWeight: "700", color: colors.success500, marginTop: 1 },
+    storeSaleDate: { fontSize: 11, color: colors.gray500, marginTop: 1 },
   });
 }
