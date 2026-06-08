@@ -19,19 +19,19 @@ function TabBar({ state, navigation }: any) {
   const { t } = useTranslation();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const activeRouteName = state.routes[state.index]?.name;
 
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom || 8 }]}>
-      {state.routes.map((route: any, index: number) => {
-        const tab = tabs[index];
-        const isActive = state.index === index;
+      {tabs.map((tab) => {
+        const isActive = activeRouteName === tab.name;
         const isScan = tab.name === "scan";
         const Icon = tab.icon;
 
         return (
           <TouchableOpacity
-            key={route.key}
-            onPress={() => navigation.navigate(route.name)}
+            key={tab.name}
+            onPress={() => navigation.navigate(tab.name)}
             activeOpacity={0.7}
             style={styles.tab}
           >

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { ArrowUpDown, Loader, MapPin, Navigation, Search, Star, Tag } from "lucide-react-native";
+import { Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ArrowUpDown, ChevronLeft, Loader, MapPin, Navigation, Search, Star, Tag } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams } from "expo-router";
 import { useTranslation } from "react-i18next";
@@ -74,6 +74,10 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite, initialProd
   const [hasMoreProducts, setHasMoreProducts] = useState(false);
   const [isLoadingStores, setIsLoadingStores] = useState(false);
   const [isLoadingRelatedProducts, setIsLoadingRelatedProducts] = useState(false);
+  const [isMoreRelatedOpen, setIsMoreRelatedOpen] = useState(false);
+  const [moreRelatedProducts, setMoreRelatedProducts] = useState<Product[]>([]);
+  const [isLoadingMoreRelatedProducts, setIsLoadingMoreRelatedProducts] = useState(false);
+  const [moreRelatedError, setMoreRelatedError] = useState<string | null>(null);
   const [favoritePendingId, setFavoritePendingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -351,6 +355,12 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite, initialProd
     }
   };
 
+  const handleSelectProduct = (product: Product) => {
+    setProducts((prev) => (prev.some((item) => item.id === product.id) ? prev : [product, ...prev]));
+    setSelectedProduct(product);
+    setIsMoreRelatedOpen(false);
+  };
+
   useEffect(() => {
     if (!products.length) {
       setSelectedProduct(null);
@@ -537,6 +547,43 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite, initialProd
     }
   };
 
+  const openMoreRelatedProducts = () => {
+    if (!selectedProduct) return;
+    setMoreRelatedError(null);
+    setMoreRelatedProducts([]);
+    setIsMoreRelatedOpen(true);
+  };
+
+  useEffect(() => {
+    if (!isMoreRelatedOpen || !selectedProduct) return;
+
+    let cancelled = false;
+
+    const loadMoreRelated = async () => {
+      setIsLoadingMoreRelatedProducts(true);
+      setMoreRelatedError(null);
+
+      try {
+        const related = await getRelatedProducts([selectedProduct.id], 24);
+        if (cancelled) return;
+        setMoreRelatedProducts((related ?? []).filter((item) => item.id !== selectedProduct.id));
+      } catch (err) {
+        if (!cancelled) {
+          setMoreRelatedError(err instanceof Error ? err.message : t("errors.requestFailed"));
+          setMoreRelatedProducts([]);
+        }
+      } finally {
+        if (!cancelled) setIsLoadingMoreRelatedProducts(false);
+      }
+    };
+
+    void loadMoreRelated();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [getRelatedProducts, isMoreRelatedOpen, selectedProduct, t]);
+
   const emptyProductsMessage = searchQuery.trim()
     ? t("prices.noProductsFound")
     : selectedMainCat && !selectedSubCat
@@ -636,7 +683,7 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite, initialProd
                       <TouchableOpacity
                         key={product.id}
                         style={[styles.productCard, isSelected && styles.productCardActive]}
-                        onPress={() => setSelectedProduct(product)}
+                        onPress={() => handleSelectProduct(product)}
                         activeOpacity={0.85}
                       >
                         <View style={styles.productRow}>
@@ -743,7 +790,14 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite, initialProd
               </View>
 
               <View style={styles.relatedSection}>
-                <Text style={styles.relatedSectionTitle}>{t("prices.relatedProducts")}</Text>
+                <View style={styles.relatedSectionHeader}>
+                  <Text style={styles.relatedSectionTitle}>{t("prices.relatedProducts")}</Text>
+                  {relatedProducts.length > 0 ? (
+                    <TouchableOpacity style={styles.relatedMoreButton} onPress={openMoreRelatedProducts} activeOpacity={0.85}>
+                      <Text style={styles.relatedMoreButtonText}>{t("prices.viewMoreRelated")}</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
 
                 {isLoadingRelatedProducts ? (
                   <View style={styles.relatedLoadingRow}>
@@ -759,7 +813,7 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite, initialProd
                         <TouchableOpacity
                           key={product.id}
                           style={styles.relatedProductCard}
-                          onPress={() => setSelectedProduct(product)}
+                          onPress={() => handleSelectProduct(product)}
                           activeOpacity={0.85}
                         >
                           <View style={styles.relatedProductImageBox}>
@@ -884,6 +938,80 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite, initialProd
           )}
         </View>
       </ScrollView>
+
+      <Modal
+        visible={isMoreRelatedOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setIsMoreRelatedOpen(false)}
+      >
+        <View style={styles.moreRelatedOverlay}>
+          <View style={[styles.moreRelatedSheet, { paddingTop: insets.top + 12 }]}>
+            <View style={styles.moreRelatedHeader}>
+              <TouchableOpacity
+                style={styles.moreRelatedBackButton}
+                onPress={() => setIsMoreRelatedOpen(false)}
+                activeOpacity={0.85}
+              >
+                <ChevronLeft size={18} color={colors.gray900} />
+              </TouchableOpacity>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.moreRelatedTitle}>{t("prices.relatedProductsMoreTitle")}</Text>
+                <Text style={styles.moreRelatedSubtitle}>{t("prices.relatedProductsMoreSubtitle")}</Text>
+              </View>
+            </View>
+
+            {isLoadingMoreRelatedProducts ? (
+              <View style={styles.moreRelatedLoading}>
+                <Loader size={18} color={colors.primary600} />
+                <Text style={styles.moreRelatedLoadingText}>{t("prices.loadingRelatedProducts")}</Text>
+              </View>
+            ) : moreRelatedError ? (
+              <View style={styles.moreRelatedEmpty}>
+                <Text style={styles.moreRelatedEmptyText}>{moreRelatedError}</Text>
+              </View>
+            ) : (
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.moreRelatedContent}>
+                {moreRelatedProducts.length > 0 ? (
+                  <View style={styles.moreRelatedGrid}>
+                    {moreRelatedProducts.map((product) => {
+                      const imageSource = getProductImageSource(product);
+                      const isFavorite = favoriteProductIds.includes(product.id);
+
+                      return (
+                        <TouchableOpacity
+                          key={product.id}
+                          style={styles.moreRelatedCard}
+                          activeOpacity={0.9}
+                          onPress={() => handleSelectProduct(product)}
+                        >
+                          <View style={styles.moreRelatedImageBox}>
+                            {imageSource ? (
+                              <Image source={imageSource} style={styles.moreRelatedImage} resizeMode="cover" />
+                            ) : (
+                              <Text style={styles.moreRelatedFallback}>{product.emoji ?? "PK"}</Text>
+                            )}
+                          </View>
+                          <Text style={styles.moreRelatedName} numberOfLines={2}>{product.name}</Text>
+                          {product.brand ? <Text style={styles.moreRelatedBrand} numberOfLines={1}>{product.brand}</Text> : null}
+                          <View style={styles.moreRelatedFooter}>
+                            <Text style={styles.moreRelatedAction}>{t("prices.selectProduct")}</Text>
+                            {isFavorite ? <Star size={13} color="#F59E0B" fill="#F59E0B" /> : null}
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                ) : (
+                  <View style={styles.moreRelatedEmpty}>
+                    <Text style={styles.moreRelatedEmptyText}>{t("prices.noRelatedProducts")}</Text>
+                  </View>
+                )}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -955,7 +1083,10 @@ function createStyles(colors: ReturnType<typeof useTheme>["colors"]) {
     detailSavingsRow: { flexDirection: "row", alignItems: "center", gap: 4 },
     detailSavings: { fontSize: 18, fontWeight: "700", color: "#6EE7B7" },
     relatedSection: { marginTop: 18, gap: 10 },
+    relatedSectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
     relatedSectionTitle: { fontSize: 12, fontWeight: "700", color: "#E0E7FF", textTransform: "uppercase", letterSpacing: 0.5 },
+    relatedMoreButton: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.14)" },
+    relatedMoreButtonText: { fontSize: 11, fontWeight: "800", color: colors.surface },
     relatedLoadingRow: { flexDirection: "row", alignItems: "center", gap: 8 },
     relatedLoadingText: { fontSize: 12, color: "#E0E7FF" },
     relatedScrollContent: { gap: 10, paddingRight: 4 },
@@ -965,6 +1096,78 @@ function createStyles(colors: ReturnType<typeof useTheme>["colors"]) {
     relatedProductFallback: { fontSize: 13, fontWeight: "800", color: colors.surface },
     relatedProductName: { fontSize: 12, fontWeight: "700", color: colors.surface, lineHeight: 16 },
     relatedEmptyText: { fontSize: 12, color: "#E0E7FF" },
+    moreRelatedOverlay: { flex: 1, backgroundColor: "rgba(15, 23, 42, 0.5)" },
+    moreRelatedSheet: {
+      flex: 1,
+      backgroundColor: colors.background,
+      borderTopLeftRadius: Radii["3xl"],
+      borderTopRightRadius: Radii["3xl"],
+      overflow: "hidden",
+    },
+    moreRelatedHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      paddingHorizontal: 20,
+      paddingBottom: 14,
+      backgroundColor: colors.surface,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.gray100,
+    },
+    moreRelatedBackButton: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: colors.gray100,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    moreRelatedTitle: { fontSize: 18, fontWeight: "800", color: colors.gray900 },
+    moreRelatedSubtitle: { marginTop: 2, fontSize: 12, color: colors.gray500 },
+    moreRelatedLoading: {
+      margin: 20,
+      paddingVertical: 28,
+      borderRadius: Radii["3xl"],
+      backgroundColor: colors.surface,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 10,
+    },
+    moreRelatedLoadingText: { fontSize: 13, fontWeight: "600", color: colors.gray600 },
+    moreRelatedContent: { padding: 20, paddingBottom: 28 },
+    moreRelatedGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+    moreRelatedCard: {
+      width: "48.7%",
+      borderRadius: Radii["2xl"],
+      backgroundColor: colors.surface,
+      padding: 10,
+      borderWidth: 1,
+      borderColor: colors.gray100,
+    },
+    moreRelatedImageBox: {
+      height: 64,
+      borderRadius: Radii.lg,
+      backgroundColor: colors.gray50,
+      alignItems: "center",
+      justifyContent: "center",
+      overflow: "hidden",
+      marginBottom: 8,
+    },
+    moreRelatedImage: { width: "100%", height: "100%" },
+    moreRelatedFallback: { fontSize: 12, fontWeight: "800", color: colors.gray900 },
+    moreRelatedName: { fontSize: 12, fontWeight: "700", color: colors.gray900, lineHeight: 16 },
+    moreRelatedBrand: { marginTop: 2, fontSize: 11, color: colors.gray500 },
+    moreRelatedFooter: { marginTop: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+    moreRelatedAction: { fontSize: 11, fontWeight: "800", color: colors.primary600 },
+    moreRelatedEmpty: {
+      margin: 20,
+      paddingVertical: 28,
+      borderRadius: Radii["3xl"],
+      backgroundColor: colors.surface,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    moreRelatedEmptyText: { fontSize: 13, color: colors.gray500, textAlign: "center" },
     placeholderCard: { backgroundColor: colors.surface, borderRadius: Radii["3xl"], padding: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 },
     placeholderTitle: { fontSize: 14, fontWeight: "700", color: colors.gray900 },
     placeholderText: { marginTop: 4, fontSize: 12, color: colors.gray400 },

@@ -1,9 +1,9 @@
 import { PricesScreen } from "../../src/components/screens/PricesScreen";
 import { useFavorites } from "../../src/favorites/FavoritesProvider";
-import { useGlobalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 
 export default function PricesTab() {
-  const { productId } = useGlobalSearchParams<{ productId?: string }>();
+  const { productId } = useLocalSearchParams<{ productId?: string }>();
   const { favoriteProductIds, toggleFavorite } = useFavorites();
   const screenKey = typeof productId === "string" && productId.trim() ? `prices-${productId.trim()}` : "prices";
 
