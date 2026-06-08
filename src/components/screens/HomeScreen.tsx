@@ -16,6 +16,7 @@ import { useTheme } from "../../theme/ThemeProvider";
 
 type ListPreviewItem = {
   id: number;
+  productId: string;
   name: string;
   qty: string;
   price: number;
@@ -177,6 +178,7 @@ export function HomeScreen({ onNavigate, onOpenList, favoriteProducts, favorites
 
           return {
             id: item.id,
+            productId: item.productId,
             name: product?.name ?? t("common.unknownProduct"),
             qty: `${safeQuantity} ${t("lists.quantityUnit")}`,
             price: safeUnitPrice * safeQuantity,
@@ -417,7 +419,8 @@ export function HomeScreen({ onNavigate, onOpenList, favoriteProducts, favorites
               </View>
             ) : listItems.length ? (
               listItems.map((item, idx) => (
-                <View key={item.id} style={[styles.listRow, idx < listItems.length - 1 && styles.listRowBorder]}>
+                <View key={item.id}>
+                  <View style={[styles.listRow, idx < listItems.length - 1 && styles.listRowBorder]}>
                   <View style={styles.productImageBox}>
                     {item.imageSource ? (
                       <Image source={item.imageSource} style={styles.productImage} resizeMode="cover" />
@@ -441,6 +444,7 @@ export function HomeScreen({ onNavigate, onOpenList, favoriteProducts, favorites
                         ) : null}
                       </>
                     ) : null}
+                  </View>
                   </View>
                 </View>
               ))
@@ -476,7 +480,8 @@ export function HomeScreen({ onNavigate, onOpenList, favoriteProducts, favorites
                 const imageSource = getProductImage(item.product);
 
                 return (
-                  <View key={item.product.id} style={[styles.listRow, idx < favoritePreview.length - 1 && styles.listRowBorder]}>
+                  <View key={item.product.id}>
+                    <View style={[styles.listRow, idx < favoritePreview.length - 1 && styles.listRowBorder]}>
                     <View style={styles.productImageBox}>
                       {imageSource ? (
                         <Image source={imageSource} style={styles.productImage} resizeMode="cover" />
@@ -502,6 +507,7 @@ export function HomeScreen({ onNavigate, onOpenList, favoriteProducts, favorites
                       ) : null}
                     </View>
                     <Star size={16} color="#F59E0B" fill="#F59E0B" />
+                  </View>
                   </View>
                 );
               })

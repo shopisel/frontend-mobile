@@ -268,20 +268,21 @@ export function ProfileScreen({
               <View style={styles.favoritesList}>
                 {favoriteProducts.map((product) => {
                   const imageSource = getProductImage(product);
-
                   return (
-                    <View key={product.id} style={styles.favoriteItemRow}>
-                      <View style={styles.favoriteImageBox}>
-                        {imageSource ? (
-                          <Image source={imageSource} style={styles.favoriteImage} resizeMode="cover" />
-                        ) : (
-                          <Text style={styles.favoriteFallback}>{product.emoji || "P"}</Text>
-                        )}
+                    <View key={product.id}>
+                      <View style={styles.favoriteItemRow}>
+                        <View style={styles.favoriteImageBox}>
+                          {imageSource ? (
+                            <Image source={imageSource} style={styles.favoriteImage} resizeMode="cover" />
+                          ) : (
+                            <Text style={styles.favoriteFallback}>{product.emoji || "P"}</Text>
+                          )}
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.settingLabel}>{product.name}</Text>
+                        </View>
+                        <Star size={16} color="#F59E0B" fill="#F59E0B" />
                       </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.settingLabel}>{product.name}</Text>
-                      </View>
-                      <Star size={16} color="#F59E0B" fill="#F59E0B" />
                     </View>
                   );
                 })}

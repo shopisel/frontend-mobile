@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { ArrowUpDown, Loader, MapPin, Navigation, Search, Star, Tag } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useLocalSearchParams } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { usePrices } from "../../api/usePrices";
 import { useProducts, type Category, type Product } from "../../api/useProducts";
@@ -33,7 +34,7 @@ type PricesScreenProps = {
   initialProductId?: string;
 };
 
-const PRODUCTS_PAGE_SIZE = 50;
+const PRODUCTS_PAGE_SIZE = 20;
 
 const getStoreDisplayName = (store: StoreRow) => {
   const name = store.name.trim();
@@ -77,9 +78,13 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite, initialProd
   const [error, setError] = useState<string | null>(null);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [lastInitialProductId, setLastInitialProductId] = useState<string | null>(null);
+  const hasMountedMainCategoryEffect = useRef(false);
+  const hasMountedSubCategoryEffect = useRef(false);
+  const params = useLocalSearchParams<{ productId?: string }>();
+  const routeProductId = typeof params.productId === "string" ? params.productId : undefined;
 
   useEffect(() => {
-    const nextId = initialProductId?.trim();
+    const nextId = (initialProductId ?? routeProductId)?.trim();
     if (!nextId) return;
     if (lastInitialProductId === nextId) return;
 
@@ -97,8 +102,6 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite, initialProd
         setSearchQuery("");
         setSelectedMainCat(null);
         setSelectedSubCat(null);
-        setMainCategories([]);
-        setSubCategories([]);
 
         if (product) {
           setProducts([product]);
@@ -119,7 +122,7 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite, initialProd
     return () => {
       cancelled = true;
     };
-  }, [getProductsByIds, initialProductId, lastInitialProductId, t]);
+  }, [getProductsByIds, initialProductId, routeProductId, lastInitialProductId, t]);
 
   const getFallbackStoreName = (storeId: string) => {
     switch (storeId) {
@@ -231,9 +234,13 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite, initialProd
       }
     };
 
-    setSelectedSubCat(null);
-    setSubCategories([]);
-    resetProductSelection();
+    if (hasMountedMainCategoryEffect.current) {
+      setSelectedSubCat(null);
+      setSubCategories([]);
+      resetProductSelection();
+    } else {
+      hasMountedMainCategoryEffect.current = true;
+    }
 
     if (selectedMainCat) {
       void loadSubCategories(selectedMainCat.id);
@@ -300,7 +307,11 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite, initialProd
       }
     };
 
-    resetProductSelection();
+    if (hasMountedSubCategoryEffect.current) {
+      resetProductSelection();
+    } else {
+      hasMountedSubCategoryEffect.current = true;
+    }
 
     if (selectedSubCat) {
       void loadProducts(selectedSubCat.id);
@@ -605,76 +616,79 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite, initialProd
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>{t("prices.selectProduct")}</Text>
 
-          {error && <Text style={styles.errorText}>{error}</Text>}
+          <View style={styles.productsBox}>
+            {error && <Text style={styles.errorText}>{error}</Text>}
 
-          {isLoadingProducts ? (
-            <View style={styles.loadingRow}>
-              <Loader size={16} color={colors.gray400} />
-              <Text style={styles.loadingText}>{t("prices.loadingProducts")}</Text>
-            </View>
-          ) : products.length > 0 ? (
-            <>
-              <View style={styles.productsWrap}>
-                {products.map((product) => {
-                  const isSelected = selectedProduct?.id === product.id;
-                  const imageSource = getProductImageSource(product);
-                  const isFavorite = favoriteProductIds.includes(product.id);
-
-                  return (
-                    <TouchableOpacity
-                      key={product.id}
-                      style={[styles.productCard, isSelected && styles.productCardActive]}
-                      onPress={() => setSelectedProduct(product)}
-                      activeOpacity={0.85}
-                    >
-                      <View style={styles.productRow}>
-                        <View style={styles.productImageBox}>
-                          {imageSource ? (
-                            <Image source={imageSource} style={styles.productImage} resizeMode="cover" />
-                          ) : (
-                            <Text style={styles.productFallback}>{product.emoji ?? "PK"}</Text>
-                          )}
-                        </View>
-                        <View style={styles.productInfo}>
-                          <Text style={[styles.productName, isSelected && styles.productNameActive]} numberOfLines={2}>
-                            {product.name}
-                          </Text>
-                          {product.brand ? (
-                            <Text style={styles.productBrand} numberOfLines={1}>
-                              {product.brand}
-                            </Text>
-                          ) : null}
-                        </View>
-                        {isFavorite ? <Star size={14} color="#F59E0B" fill="#F59E0B" /> : null}
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
+            {isLoadingProducts ? (
+              <View style={styles.loadingRow}>
+                <Loader size={16} color={colors.gray400} />
+                <Text style={styles.loadingText}>{t("prices.loadingProducts")}</Text>
               </View>
-              {(hasMoreProducts || isLoadingMoreProducts) && (
-                <TouchableOpacity
-                  style={styles.loadMoreButton}
-                  onPress={() => void loadMoreProducts()}
-                  disabled={isLoadingMoreProducts}
-                  activeOpacity={0.9}
-                >
-                  {isLoadingMoreProducts ? (
-                    <View style={styles.loadMoreInner}>
-                      <Loader size={16} color={colors.gray400} />
-                      <Text style={styles.loadMoreText}>{t("common.loading")}</Text>
-                    </View>
-                  ) : (
-                    <Text style={styles.loadMoreText}>{t("common.loadMore")}</Text>
+            ) : products.length > 0 ? (
+              <>
+                <ScrollView style={styles.productsList} nestedScrollEnabled contentContainerStyle={styles.productsWrap}>
+                  {products.map((product) => {
+                    const isSelected = selectedProduct?.id === product.id;
+                    const imageSource = getProductImageSource(product);
+                    const isFavorite = favoriteProductIds.includes(product.id);
+
+                    return (
+                      <TouchableOpacity
+                        key={product.id}
+                        style={[styles.productCard, isSelected && styles.productCardActive]}
+                        onPress={() => setSelectedProduct(product)}
+                        activeOpacity={0.85}
+                      >
+                        <View style={styles.productRow}>
+                          <View style={styles.productImageBox}>
+                            {imageSource ? (
+                              <Image source={imageSource} style={styles.productImage} resizeMode="cover" />
+                            ) : (
+                              <Text style={styles.productFallback}>{product.emoji ?? "PK"}</Text>
+                            )}
+                          </View>
+                          <View style={styles.productInfo}>
+                            <Text style={[styles.productName, isSelected && styles.productNameActive]} numberOfLines={2}>
+                              {product.name}
+                            </Text>
+                            {product.brand ? (
+                              <Text style={styles.productBrand} numberOfLines={1}>
+                                {product.brand}
+                              </Text>
+                            ) : null}
+                          </View>
+                          {isFavorite ? <Star size={14} color="#F59E0B" fill="#F59E0B" /> : null}
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                  {(hasMoreProducts || isLoadingMoreProducts) && (
+                    <TouchableOpacity
+                      style={styles.loadMoreButton}
+                      onPress={() => void loadMoreProducts()}
+                      disabled={isLoadingMoreProducts}
+                      activeOpacity={0.9}
+                    >
+                      {isLoadingMoreProducts ? (
+                        <View style={styles.loadMoreInner}>
+                          <Loader size={16} color={colors.gray400} />
+                          <Text style={styles.loadMoreText}>{t("common.loading")}</Text>
+                        </View>
+                      ) : (
+                        <Text style={styles.loadMoreText}>{t("common.loadMore")}</Text>
+                      )}
+                    </TouchableOpacity>
                   )}
-                </TouchableOpacity>
-              )}
-            </>
-          ) : (
-            <Text style={styles.emptyStateText}>{emptyProductsMessage}</Text>
-          )}
+                </ScrollView>
+              </>
+            ) : (
+              <Text style={styles.emptyStateText}>{emptyProductsMessage}</Text>
+            )}
+          </View>
         </View>
 
         <View style={styles.section}>
+          <View style={styles.pricesBox}>
           {selectedProduct ? (
             <View style={styles.detailCard}>
               <View style={styles.detailTopRow}>
@@ -771,6 +785,7 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite, initialProd
               <Text style={styles.placeholderText}>{t("prices.pickProduct")}</Text>
             </View>
           )}
+          </View>
         </View>
 
         <View style={styles.sortRow}>
@@ -822,48 +837,50 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite, initialProd
           {sortedStores.length === 0 ? (
             <Text style={styles.emptyStateText}>{selectedProduct ? t("prices.noPrices") : t("prices.selectProductToSeePrices")}</Text>
           ) : (
-            sortedStores.map((store, index) => (
-              <View
-                key={`${selectedProduct?.id ?? "none"}-${store.id}`}
-                style={[styles.storeCard, index === 0 && styles.storeCardBest]}
-              >
-                <View style={styles.storeHeaderRow}>
-                  <View style={styles.storeLeftRow}>
-                    <View style={[styles.rankBadge, index === 0 && styles.rankBadgeActive]}>
-                      <Text style={[styles.rankText, index === 0 && styles.rankTextActive]}>#{index + 1}</Text>
+            <ScrollView style={styles.pricesList} nestedScrollEnabled>
+              {sortedStores.map((store, index) => (
+                <View
+                  key={`${selectedProduct?.id ?? "none"}-${store.id}`}
+                  style={[styles.storeCard, index === 0 && styles.storeCardBest]}
+                >
+                  <View style={styles.storeHeaderRow}>
+                    <View style={styles.storeLeftRow}>
+                      <View style={[styles.rankBadge, index === 0 && styles.rankBadgeActive]}>
+                        <Text style={[styles.rankText, index === 0 && styles.rankTextActive]}>#{index + 1}</Text>
+                      </View>
+                      <View style={styles.storeInfo}>
+                        <Text style={styles.storeName} numberOfLines={1}>{getStoreDisplayName(store)}</Text>
+                        {store.address || store.city ? (
+                          <Text style={styles.storeAddress} numberOfLines={2}>
+                            {[store.address, store.city].filter(Boolean).join(", ")}
+                          </Text>
+                        ) : null}
+                        {store.quantityText || store.unitPriceText ? (
+                          <Text style={styles.storeMeta} numberOfLines={1}>
+                            {[store.quantityText, store.unitPriceText].filter(Boolean).join(" · ")}
+                          </Text>
+                        ) : null}
+                        {typeof store.distanceKm === "number" ? (
+                          <Text style={styles.storeDistance}>{t("prices.distanceAway", { value: store.distanceKm.toFixed(1) })}</Text>
+                        ) : null}
+                      </View>
                     </View>
-                    <View style={styles.storeInfo}>
-                      <Text style={styles.storeName} numberOfLines={1}>{getStoreDisplayName(store)}</Text>
-                      {store.address || store.city ? (
-                        <Text style={styles.storeAddress} numberOfLines={2}>
-                          {[store.address, store.city].filter(Boolean).join(", ")}
-                        </Text>
+                    <View style={styles.storePriceColumn}>
+                      <Text style={[styles.storePrice, index === 0 && { color: colors.success500 }]}>{formatCurrency(store.price, i18n.language)}</Text>
+                      {typeof store.originalPrice === "number" && store.originalPrice > store.price ? (
+                        <Text style={styles.storeOriginalPrice}>{formatCurrency(store.originalPrice, i18n.language)}</Text>
                       ) : null}
-                      {store.quantityText || store.unitPriceText ? (
-                        <Text style={styles.storeMeta} numberOfLines={1}>
-                          {[store.quantityText, store.unitPriceText].filter(Boolean).join(" · ")}
-                        </Text>
+                      {typeof store.discountPercent === "number" ? (
+                        <Text style={styles.storeDiscount}>-{store.discountPercent}%</Text>
                       ) : null}
-                      {typeof store.distanceKm === "number" ? (
-                        <Text style={styles.storeDistance}>{t("prices.distanceAway", { value: store.distanceKm.toFixed(1) })}</Text>
+                      {store.saleDate ? (
+                        <Text style={styles.storeSaleDate}>Validade: {formatSaleDate(store.saleDate)}</Text>
                       ) : null}
                     </View>
-                  </View>
-                  <View style={styles.storePriceColumn}>
-                    <Text style={[styles.storePrice, index === 0 && { color: colors.success500 }]}>{formatCurrency(store.price, i18n.language)}</Text>
-                    {typeof store.originalPrice === "number" && store.originalPrice > store.price ? (
-                      <Text style={styles.storeOriginalPrice}>{formatCurrency(store.originalPrice, i18n.language)}</Text>
-                    ) : null}
-                    {typeof store.discountPercent === "number" ? (
-                      <Text style={styles.storeDiscount}>-{store.discountPercent}%</Text>
-                    ) : null}
-                    {store.saleDate ? (
-                      <Text style={styles.storeSaleDate}>Validade: {formatSaleDate(store.saleDate)}</Text>
-                    ) : null}
                   </View>
                 </View>
-              </View>
-            ))
+              ))}
+            </ScrollView>
           )}
         </View>
       </ScrollView>
@@ -899,6 +916,8 @@ function createStyles(colors: ReturnType<typeof useTheme>["colors"]) {
     loadingRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 8 },
     loadingText: { fontSize: 13, fontWeight: "600", color: colors.gray400 },
     productsWrap: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+    productsBox: { backgroundColor: colors.surface, borderRadius: Radii["2xl"], padding: 12, borderWidth: 1, borderColor: colors.gray100, marginBottom: 12 },
+    productsList: { maxHeight: 220 },
     productCard: { width: "48.5%", borderRadius: Radii["2xl"], borderWidth: 2, borderColor: colors.gray100, backgroundColor: colors.surface, padding: 12 },
     productCardActive: { borderColor: colors.primary600, backgroundColor: colors.primary50 },
     productRow: { flexDirection: "row", alignItems: "center", gap: 10 },
@@ -913,6 +932,7 @@ function createStyles(colors: ReturnType<typeof useTheme>["colors"]) {
     loadMoreInner: { flexDirection: "row", alignItems: "center", gap: 8 },
     loadMoreText: { fontSize: 13, fontWeight: "800", color: colors.gray700 },
     emptyStateText: { fontSize: 13, fontWeight: "600", color: colors.gray400 },
+    pricesBox: { backgroundColor: colors.surface, borderRadius: Radii["3xl"], padding: 12, borderWidth: 1, borderColor: colors.gray100, marginBottom: 12 },
     detailCard: { borderRadius: Radii["3xl"], padding: 20, backgroundColor: colors.primary600, shadowColor: colors.primary600, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 8 },
     detailTopRow: { flexDirection: "row", alignItems: "center", gap: 16 },
     detailImageBox: { width: 56, height: 56, borderRadius: Radii.xl, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center", overflow: "hidden" },
@@ -957,6 +977,7 @@ function createStyles(colors: ReturnType<typeof useTheme>["colors"]) {
     mapBtnActive: { backgroundColor: colors.primary600 },
     mapBtnTextActive: { color: colors.surface },
     mapPlaceholder: { marginHorizontal: 20, marginBottom: 16, height: 160, borderRadius: Radii["2xl"], backgroundColor: colors.primary50, position: "relative", overflow: "hidden" },
+    pricesList: { maxHeight: 320 },
     mapPin: { position: "absolute", paddingHorizontal: 8, paddingVertical: 4, borderRadius: Radii.lg, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 4, elevation: 4 },
     userPin: { position: "absolute", bottom: 12, right: 12, width: 32, height: 32, borderRadius: 16, backgroundColor: "#3B82F6", alignItems: "center", justifyContent: "center" },
     storesSection: { paddingHorizontal: 20, paddingBottom: 32, gap: 12 },
