@@ -217,6 +217,8 @@ export const resources = {
       errors: {
         apiNotConfigured: "API is not configured. Set EXPO_PUBLIC_API_BASE_URL in frontend-mobile/.env to the gateway or API URL.",
         requestFailed: "Request failed",
+        listVersionMissing: "List version is missing. Reload the list and try again.",
+        listVersionConflict: "The list was changed by another user. Reload and merge your changes again.",
         keycloakNotConfigured: "Keycloak is not configured. Set EXPO_PUBLIC_KEYCLOAK_URL, EXPO_PUBLIC_KEYCLOAK_REALM and EXPO_PUBLIC_KEYCLOAK_CLIENT.",
       },
     },
@@ -439,6 +441,8 @@ export const resources = {
       errors: {
         apiNotConfigured: "API nao configurada. Define EXPO_PUBLIC_API_BASE_URL no frontend-mobile/.env com a URL da gateway ou da API.",
         requestFailed: "Pedido falhou",
+        listVersionMissing: "Falta a versao da lista. Recarrega a lista e tenta novamente.",
+        listVersionConflict: "A lista foi alterada por outro utilizador. Recarrega e refaz o merge das tuas alteracoes.",
         keycloakNotConfigured: "Keycloak nao configurado. Define EXPO_PUBLIC_KEYCLOAK_URL, EXPO_PUBLIC_KEYCLOAK_REALM e EXPO_PUBLIC_KEYCLOAK_CLIENT.",
       },
     },

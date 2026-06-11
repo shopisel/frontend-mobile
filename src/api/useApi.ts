@@ -6,6 +6,16 @@ import { i18n } from "../i18n";
 const extra = (Constants.expoConfig?.extra ?? {}) as Record<string, string | undefined>;
 const API_BASE_URL = extra.API_BASE_URL ?? process.env.EXPO_PUBLIC_API_BASE_URL ?? "";
 
+export class ApiError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 export function useApi() {
   const { getAccessToken } = useAuth();
 
@@ -57,7 +67,7 @@ export function useApi() {
         body: responseText,
       });
 
-      throw new Error(`HTTP ${response.status}: ${errorMessage}`);
+      throw new ApiError(response.status, errorMessage);
     }
 
     if (response.status === 204) return null;
@@ -71,9 +81,9 @@ export function useApi() {
 
   const get   = useCallback((endpoint: string) => fetchWithAuth(endpoint), [fetchWithAuth]);
   const post  = useCallback((endpoint: string, body?: unknown) => fetchWithAuth(endpoint, { method: "POST",   body: JSON.stringify(body) }), [fetchWithAuth]);
-  const put   = useCallback((endpoint: string, body?: unknown) => fetchWithAuth(endpoint, { method: "PUT",    body: JSON.stringify(body) }), [fetchWithAuth]);
+  const put   = useCallback((endpoint: string, body?: unknown, headers?: HeadersInit) => fetchWithAuth(endpoint, { method: "PUT",    body: JSON.stringify(body), headers }), [fetchWithAuth]);
   const patch = useCallback((endpoint: string, body?: unknown) => fetchWithAuth(endpoint, { method: "PATCH",  body: JSON.stringify(body) }), [fetchWithAuth]);
-  const del   = useCallback((endpoint: string)                 => fetchWithAuth(endpoint, { method: "DELETE" }),                             [fetchWithAuth]);
+  const del   = useCallback((endpoint: string, headers?: HeadersInit) => fetchWithAuth(endpoint, { method: "DELETE", headers }),                             [fetchWithAuth]);
 
   return { get, post, put, patch, del };
 }

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Check, ChevronLeft, Plus, RefreshCw, Search, Trash2 } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLists, type ListItemRequest, type ListItemResponse, type ListResponse } from "../../api/useLists";
+import { ApiError } from "../../api/useApi";
 import { useProducts, type Product } from "../../api/useProducts";
 import { useStores, type StoreResponse } from "../../api/useStores";
 import { calculateDiscountPercentage, usePrices } from "../../api/usePrices";
@@ -43,6 +44,14 @@ export function ListScreen() {
   const [searchInput, setSearchInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+
+  const getListActionErrorMessage = useCallback((error: unknown) => {
+    if (error instanceof ApiError) {
+      if (error.status === 428) return "Falta a versao da lista. Recarrega e tenta novamente.";
+      if (error.status === 409) return "A lista foi alterada por outro utilizador. Recarrega e refaz o merge.";
+    }
+    return error instanceof Error ? error.message : "Nao foi possivel atualizar a lista.";
+  }, []);
 
   const loadItems = useCallback(async (currentListId: string) => {
     setIsLoading(true);
@@ -133,7 +142,7 @@ export function ListScreen() {
     if (listId) void loadItems(listId);
   }, [listId, loadItems]);
 
-  const commitUpdates = async (currentListId: string, updated: EnrichedItem[]) => {
+  const commitUpdates = async (currentListId: string, version: string, updated: EnrichedItem[]) => {
     const req: ListItemRequest[] = updated.map((item) => ({
       productId: item.productId,
       storeId: item.storeId,
@@ -142,21 +151,30 @@ export function ListScreen() {
       checked: item.checked,
     }));
 
-    await updateList(currentListId, undefined, req).catch(console.error);
+    try {
+      const updatedList = await updateList(currentListId, version, undefined, req);
+      setListDetails(updatedList);
+    } catch (error) {
+      console.error(error);
+      Alert.alert(getListActionErrorMessage(error));
+      if (currentListId) {
+        await loadItems(currentListId);
+      }
+    }
   };
 
   const handleToggle = (id: number) => {
     if (!listId) return;
     const updated = items.map((item) => (item.id === id ? { ...item, checked: !item.checked } : item));
     setItems(updated);
-    void commitUpdates(listId, updated);
+    void commitUpdates(listId, listDetails?.version ?? "", updated);
   };
 
   const handleDelete = (id: number) => {
     if (!listId) return;
     const updated = items.filter((item) => item.id !== id);
     setItems(updated);
-    void commitUpdates(listId, updated);
+    void commitUpdates(listId, listDetails?.version ?? "", updated);
   };
 
   const handleAddItem = async (item: AddListItemPayload) => {
@@ -187,7 +205,7 @@ export function ListScreen() {
     ];
 
     setItems(updated);
-    await commitUpdates(listId, updated);
+    await commitUpdates(listId, listDetails?.version ?? "", updated);
   };
 
   const filteredItems = useMemo(() => (

@@ -1,6 +1,6 @@
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, ActivityIndicator, Image, Modal,
+  TextInput, ActivityIndicator, Image, Modal, Alert,
 } from "react-native";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
@@ -9,6 +9,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useLists, type ListResponse, type ListItemResponse, type ListItemRequest } from "../../api/useLists";
+import { ApiError } from "../../api/useApi";
 import { useProducts, type Product } from "../../api/useProducts";
 import { useStores, type StoreResponse } from "../../api/useStores";
 import { AddProductModal, type AddListItemPayload } from "../modals/AddProductModal";
@@ -48,6 +49,14 @@ export function ListsScreen({ onNavigate }: ListsScreenProps) {
   const [showCreateModal, setShowCreateModal] = useState(false);
 
   const activeList = useMemo(() => lists.find((list) => list.id === activeListId) ?? null, [lists, activeListId]);
+
+  const getListActionErrorMessage = useCallback((error: unknown) => {
+    if (error instanceof ApiError) {
+      if (error.status === 428) return t("errors.listVersionMissing");
+      if (error.status === 409) return t("errors.listVersionConflict");
+    }
+    return error instanceof Error ? error.message : t("lists.loadError");
+  }, [t]);
 
   const loadLists = useCallback(async () => {
     setIsLoading(true);
@@ -112,7 +121,7 @@ export function ListsScreen({ onNavigate }: ListsScreenProps) {
     if (activeListId && view === "items") void loadItems(activeListId);
   }, [activeListId, view, loadItems]);
 
-  const commitUpdates = async (listId: string, updated: EnrichedItem[]) => {
+  const commitUpdates = async (listId: string, version: string, updated: EnrichedItem[]) => {
     const req: ListItemRequest[] = updated.map((item) => ({
       productId: item.productId,
       storeId: item.storeId,
@@ -120,21 +129,32 @@ export function ListsScreen({ onNavigate }: ListsScreenProps) {
       price: item.price,
       checked: item.checked,
     }));
-    await updateList(listId, undefined, req).catch(console.error);
+    try {
+      const updatedList = await updateList(listId, version, undefined, req);
+      setLists((current) => current.map((list) => (list.id === listId ? updatedList : list)));
+    } catch (error) {
+      console.error(error);
+      Alert.alert(getListActionErrorMessage(error));
+      if (activeListId === listId) {
+        await loadItems(listId);
+      } else {
+        await loadLists();
+      }
+    }
   };
 
   const handleToggle = (id: number) => {
     if (!activeListId) return;
     const updated = items.map((item) => (item.id === id ? { ...item, checked: !item.checked } : item));
     setItems(updated);
-    void commitUpdates(activeListId, updated);
+    void commitUpdates(activeListId, activeList?.version ?? "", updated);
   };
 
   const handleDelete = (id: number) => {
     if (!activeListId) return;
     const updated = items.filter((item) => item.id !== id);
     setItems(updated);
-    void commitUpdates(activeListId, updated);
+    void commitUpdates(activeListId, activeList?.version ?? "", updated);
   };
 
   const handleCreateList = async () => {
@@ -157,10 +177,16 @@ export function ListsScreen({ onNavigate }: ListsScreenProps) {
   const handleDeleteList = async (listId: string) => {
     setIsLoading(true);
     try {
-      await removeList(listId);
+      const currentList = lists.find((list) => list.id === listId);
+      if (!currentList) return;
+      await removeList(listId, currentList.version);
       setLists((current) => current.filter((list) => list.id !== listId));
     } catch (error) {
       console.error(error);
+      Alert.alert(getListActionErrorMessage(error));
+      if (error instanceof ApiError && (error.status === 428 || error.status === 409)) {
+        await loadLists();
+      }
     } finally {
       setIsLoading(false);
     }
@@ -187,7 +213,7 @@ export function ListsScreen({ onNavigate }: ListsScreenProps) {
     ];
 
     setItems(updated);
-    await commitUpdates(activeListId, updated);
+    await commitUpdates(activeListId, activeList?.version ?? "", updated);
   };
 
   const filteredItems = useMemo(() => {

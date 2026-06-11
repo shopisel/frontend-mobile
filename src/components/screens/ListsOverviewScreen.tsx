@@ -5,6 +5,7 @@ import { Plus, RefreshCw, ShoppingCart, ChevronRight, Trash2, Pencil } from "luc
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useLists, type ListResponse } from "../../api/useLists";
+import { ApiError } from "../../api/useApi";
 import { Radii } from "../../styles/typography";
 import { useTheme } from "../../theme/ThemeProvider";
 
@@ -24,6 +25,14 @@ export function ListsOverviewScreen() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
   const styles = useMemo(() => createStyles(colors), [colors]);
+
+  const getListActionErrorMessage = useCallback((error: unknown) => {
+    if (error instanceof ApiError) {
+      if (error.status === 428) return t("errors.listVersionMissing");
+      if (error.status === 409) return t("errors.listVersionConflict");
+    }
+    return error instanceof Error ? error.message : t("lists.loadError");
+  }, [t]);
 
   const loadLists = useCallback(async () => {
     setIsLoading(true);
@@ -66,12 +75,18 @@ export function ListsOverviewScreen() {
   const handleDeleteList = async (listId: string) => {
     setIsLoading(true);
     try {
-      await removeList(listId);
+      const currentList = lists.find((list) => list.id === listId);
+      if (!currentList) return;
+      await removeList(listId, currentList.version);
       setLists((current) => current.filter((list) => list.id !== listId));
       setLoadError(null);
     } catch (error) {
       console.error(error);
-      setLoadError(error instanceof Error ? error.message : t("lists.deleteError"));
+      const message = getListActionErrorMessage(error);
+      if (error instanceof ApiError && (error.status === 428 || error.status === 409)) {
+        await loadLists();
+      }
+      setLoadError(message);
     } finally {
       setIsLoading(false);
     }
@@ -104,6 +119,7 @@ export function ListsOverviewScreen() {
       const currentItems = listBeingRenamed.items ?? [];
       const updatedList = await updateList(
         listBeingRenamed.id,
+        listBeingRenamed.version,
         nextName,
         currentItems.map((item) => ({
           productId: item.productId,
@@ -118,7 +134,11 @@ export function ListsOverviewScreen() {
       closeRenameModal();
     } catch (error) {
       console.error(error);
-      setLoadError(error instanceof Error ? error.message : t("lists.renameError"));
+      const message = getListActionErrorMessage(error);
+      if (error instanceof ApiError && (error.status === 428 || error.status === 409)) {
+        await loadLists();
+      }
+      setLoadError(message);
     } finally {
       setIsLoading(false);
     }
