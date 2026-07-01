@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Camera, Flashlight, Image as ImageIcon, X } from "lucide-react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useFocusEffect, useIsFocused } from "@react-navigation/native";
 import { useTranslation } from "react-i18next";
 import { Colors } from "../../styles/colors";
 import { Radii, Typography } from "../../styles/typography";
@@ -10,6 +11,7 @@ import { ProductResponse, useProducts } from "../../api/useProducts";
 import { getCategoryImage } from "../../utils/categoryImages";
 import { extractEanFromQrPayload } from "../../utils/qrCode";
 import { extractKeywordsFromOff, fetchOpenFoodFactsProduct } from "../../utils/openFoodFacts";
+import { saveScannedProduct } from "../../utils/scannedProductStore";
 
 interface ScanScreenProps {
   onNavigate?: (route: string) => void;
@@ -20,6 +22,29 @@ type ScanResult = {
   matchType: "exact" | "related" | string;
   product?: ProductResponse | null;
   relatedProducts: ProductResponse[];
+};
+
+const MOCK_SCAN_RESULT: ScanResult = {
+  barcode: "5601234567890",
+  matchType: "exact",
+  product: {
+    id: "0167284433664441b4de2500e5303385",
+    name: "Preparado Sopa Juliana Embalado",
+    brand: "Pingo Doce",
+    barcode: "5601234567890",
+    categoryId: "mock-category",
+    image: "https://www.pingodoce.pt/dw/image/v2/BLJJ_PRD/on/demandware.static/-/Sites-pingo-doce-master/default/dwd2cd5256/images/medium/955143_aba9f0d892659ee05105ab26638a5939.png?sw=198",
+  },
+  relatedProducts: [
+    {
+      id: "mock-product-2",
+      name: "Produto semelhante",
+      brand: "Shopisel",
+      barcode: "5601234567891",
+      categoryId: "mock-category",
+      image: "",
+    },
+  ],
 };
 
 const getProductImageSource = (product?: ProductResponse | null) => {
@@ -48,16 +73,40 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
   const [added, setAdded] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+  const [cameraSession, setCameraSession] = useState(0);
+  const isFocused = useIsFocused();
+  const [cameraVisible, setCameraVisible] = useState(false);
 
   const canAddToList = useMemo(() => Boolean(scanResult && !scanning && !scanError), [scanResult, scanning, scanError]);
+  const log = (...args: unknown[]) => {
+    if (__DEV__) {
+      console.log("[ScanScreen]", ...args);
+    }
+  };
 
-  const resetScan = () => {
+  const resetScan = useCallback(() => {
     setScanning(false);
     setScanned(false);
     setAdded(false);
     setScanError(null);
     setScanResult(null);
-  };
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      setCameraSession((value) => value + 1);
+      const timer = setTimeout(() => {
+        setCameraVisible(true);
+      }, 180);
+
+      return () => {
+        clearTimeout(timer);
+        setCameraVisible(false);
+        resetScan();
+        setTorchOn(false);
+      };
+    }, [resetScan]),
+  );
 
   const handleScannedPayload = async (payload: string) => {
     setScanError(null);
@@ -72,6 +121,22 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
       const off = await fetchOpenFoodFactsProduct(barcode);
       const keywords = extractKeywordsFromOff(off);
       const backendRes = await qrCodeLookup(barcode, keywords);
+      log("scan result", {
+        barcode,
+        matchType: backendRes.matchType,
+        productId: backendRes.product?.id,
+        relatedIds: (backendRes.relatedProducts ?? []).map((product) => product.id),
+      });
+      const nextProduct = backendRes.product
+        ? {
+            id: backendRes.product.id,
+            name: backendRes.product.name,
+            brand: backendRes.product.brand ?? undefined,
+            barcode: backendRes.product.barcode,
+            categoryId: backendRes.product.categoryId,
+            image: backendRes.product.image,
+          }
+        : null;
 
       setScanResult({
         barcode,
@@ -79,6 +144,13 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
         product: backendRes.product,
         relatedProducts: backendRes.relatedProducts ?? [],
       });
+
+      if (nextProduct) {
+        log("persist scanned product", nextProduct.id);
+        void saveScannedProduct(nextProduct).catch((error) => {
+          console.error("[ScanScreen] failed to persist scanned product", error);
+        });
+      }
     } catch (err) {
       console.error("[ScanScreen] scan failed", err);
       setScanError(typeof err === "object" && err && "message" in err ? String((err as any).message) : t("errors.requestFailed"));
@@ -96,6 +168,39 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
     }, 700);
   };
 
+  const goToPricesWithProduct = async (product: ProductResponse) => {
+    try {
+      await saveScannedProduct({
+        id: product.id,
+        name: product.name,
+        brand: product.brand ?? undefined,
+        barcode: product.barcode,
+        categoryId: product.categoryId,
+        image: product.image,
+      });
+    } catch (error) {
+      console.error("[ScanScreen] failed to persist scanned product", error);
+    } finally {
+      onNavigate?.("prices");
+    }
+  };
+
+  const openProductPage = () => {
+    if (!scanResult?.product) return;
+    log("open product page", scanResult.product.id);
+    void goToPricesWithProduct(scanResult.product);
+  };
+
+  const loadMockScan = () => {
+    setScanError(null);
+    setScanning(false);
+    setScanned(true);
+    setAdded(false);
+    setScanResult(MOCK_SCAN_RESULT);
+    log("load mock scan", MOCK_SCAN_RESULT.product?.id);
+    void goToPricesWithProduct(MOCK_SCAN_RESULT.product!);
+  };
+
   return (
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
@@ -111,40 +216,43 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
         </TouchableOpacity>
       </View>
 
-      <View style={styles.preview}>
-        {permission?.granted ? (
-          <View style={styles.cameraFrame}>
-            <CameraView
-              style={styles.cameraView}
-              facing="back"
-              enableTorch={torchOn}
-              onBarcodeScanned={scanned ? undefined : (event) => void handleScannedPayload(event.data)}
-            />
-            <View style={[styles.corner, styles.topLeft]} />
-            <View style={[styles.corner, styles.topRight]} />
-            <View style={[styles.corner, styles.bottomLeft]} />
-            <View style={[styles.corner, styles.bottomRight]} />
-            {!scanned ? (
-              <Text style={styles.previewText}>
-                {scanning ? t("scanScreen.looking") : t("scanScreen.ready")}
-              </Text>
-            ) : null}
+      {!scanned ? (
+        <>
+          <View style={styles.preview}>
+            {permission == null || !cameraVisible || !isFocused ? (
+              <View style={styles.permissionLoadingCard}>
+                <ActivityIndicator color={Colors.surface} />
+              </View>
+            ) : permission.granted ? (
+              <View style={styles.cameraFrame}>
+                <CameraView
+                  key={cameraSession}
+                  style={styles.cameraView}
+                  facing="back"
+                  enableTorch={torchOn}
+                  onBarcodeScanned={scanned ? undefined : (event) => void handleScannedPayload(event.data)}
+                />
+                <View style={[styles.corner, styles.topLeft]} />
+                <View style={[styles.corner, styles.topRight]} />
+                <View style={[styles.corner, styles.bottomLeft]} />
+                <View style={[styles.corner, styles.bottomRight]} />
+                <Text style={styles.previewText}>
+                  {scanning ? t("scanScreen.looking") : t("scanScreen.ready")}
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.cameraPermissionCard}>
+                <Text style={styles.permissionTitle}>{t("prices.cameraPermissionTitle")}</Text>
+                <Text style={styles.permissionText}>{t("prices.cameraPermissionBody")}</Text>
+                <TouchableOpacity style={styles.primaryButton} onPress={() => void requestPermission()} activeOpacity={0.85}>
+                  <Camera size={18} color={Colors.surface} />
+                  <Text style={styles.primaryButtonText}>{t("prices.grantCameraPermission")}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
-        ) : (
-          <View style={styles.cameraPermissionCard}>
-            <Text style={styles.permissionTitle}>{t("prices.cameraPermissionTitle")}</Text>
-            <Text style={styles.permissionText}>{t("prices.cameraPermissionBody")}</Text>
-            <TouchableOpacity style={styles.primaryButton} onPress={() => void requestPermission()} activeOpacity={0.85}>
-              <Camera size={18} color={Colors.surface} />
-              <Text style={styles.primaryButtonText}>{t("prices.grantCameraPermission")}</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </View>
 
-      <View style={styles.actions}>
-        {!scanned ? (
-          <>
+          <View style={styles.actions}>
             <TouchableOpacity
               style={[styles.primaryButton, scanning && styles.primaryButtonDisabled]}
               onPress={() => !scanning && setScanning(true)}
@@ -158,8 +266,16 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
               <ImageIcon size={18} color={Colors.gray600} />
               <Text style={styles.secondaryButtonText}>{t("scanScreen.chooseGallery")}</Text>
             </TouchableOpacity>
-          </>
-        ) : (
+
+            {__DEV__ ? (
+              <TouchableOpacity style={styles.secondaryButton} onPress={loadMockScan} activeOpacity={0.85}>
+                <Text style={styles.secondaryButtonText}>{t("scanScreen.loadExample")}</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </>
+      ) : (
+        <View style={styles.resultMode}>
           <View style={styles.resultCard}>
             <View style={styles.resultHeader}>
               <View style={styles.productBubble}>
@@ -210,7 +326,7 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
                         <TouchableOpacity
                           key={p.id}
                           style={styles.relatedRow}
-                          onPress={() => onNavigate?.(`prices?productId=${encodeURIComponent(p.id)}`)}
+                          onPress={() => void goToPricesWithProduct(p)}
                           activeOpacity={0.85}
                         >
                           <View style={styles.relatedImageBox}>
@@ -249,7 +365,7 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
                     <TouchableOpacity
                       key={p.id}
                       style={styles.relatedRow}
-                      onPress={() => onNavigate?.(`prices?productId=${encodeURIComponent(p.id)}`)}
+                      onPress={() => void goToPricesWithProduct(p)}
                       activeOpacity={0.85}
                     >
                       <View style={styles.relatedImageBox}>
@@ -284,16 +400,17 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
                 <Text style={styles.primaryButtonText}>{added ? t("scanScreen.added") : t("scanScreen.addToList")}</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={styles.secondarySplitButton}
-                onPress={() => onNavigate?.("prices")}
+                style={[styles.secondarySplitButton, !scanResult?.product && !scanResult?.relatedProducts?.length && styles.secondarySplitButtonDisabled]}
+                onPress={openProductPage}
+                disabled={!scanResult?.product && !scanResult?.relatedProducts?.length}
                 activeOpacity={0.85}
               >
-                <Text style={styles.secondaryActionText}>{t("scanScreen.compare")}</Text>
+                <Text style={styles.secondaryActionText}>{t("scanScreen.viewProduct")}</Text>
               </TouchableOpacity>
             </View>
           </View>
-        )}
-      </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -336,6 +453,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 24,
+    paddingBottom: 16,
   },
   cameraFrame: {
     width: "100%",
@@ -359,6 +477,15 @@ const styles = StyleSheet.create({
     padding: 24,
     gap: 14,
     alignItems: "center",
+  },
+  permissionLoadingCard: {
+    width: "100%",
+    maxWidth: 310,
+    minHeight: 180,
+    borderRadius: Radii["3xl"],
+    backgroundColor: "rgba(255,255,255,0.08)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   permissionTitle: {
     fontSize: Typography.xl,
@@ -413,10 +540,14 @@ const styles = StyleSheet.create({
     borderRadius: Radii.xl,
   },
   actions: {
-    flex: 1,
     paddingHorizontal: 20,
     paddingBottom: 28,
     gap: 12,
+  },
+  resultMode: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingBottom: 28,
   },
   primaryButton: {
     height: 54,
@@ -634,6 +765,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     alignItems: "center",
     justifyContent: "center",
+  },
+  secondarySplitButtonDisabled: {
+    opacity: 0.5,
   },
   secondaryActionText: {
     fontSize: Typography.md,

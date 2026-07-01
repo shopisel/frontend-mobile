@@ -32,6 +32,7 @@ type PricesScreenProps = {
   favoriteProductIds: string[];
   onToggleFavorite: (product: Product) => Promise<void>;
   initialProductId?: string;
+  initialProduct?: Product | null;
 };
 
 const PRODUCTS_PAGE_SIZE = 20;
@@ -47,7 +48,7 @@ const getStoreDisplayName = (store: StoreRow) => {
   return `${brand} ${name}`;
 };
 
-export function PricesScreen({ favoriteProductIds, onToggleFavorite, initialProductId }: PricesScreenProps) {
+export function PricesScreen({ favoriteProductIds, onToggleFavorite, initialProductId, initialProduct }: PricesScreenProps) {
   const insets = useSafeAreaInsets();
   const { t, i18n } = useTranslation();
   const { colors } = useTheme();
@@ -86,14 +87,40 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite, initialProd
   const hasMountedSubCategoryEffect = useRef(false);
   const params = useLocalSearchParams<{ productId?: string }>();
   const routeProductId = typeof params.productId === "string" ? params.productId : undefined;
+  const initialStoredProductId = initialProduct?.id?.trim();
+  const log = (...args: unknown[]) => {
+    if (__DEV__) {
+      console.log("[PricesScreen]", ...args);
+    }
+  };
 
   useEffect(() => {
+    if (initialProduct) {
+      const nextId = initialStoredProductId;
+      if (!nextId) return;
+      if (lastInitialProductId === `stored:${nextId}`) return;
+
+      log("apply stored product", nextId);
+      setLastInitialProductId(`stored:${nextId}`);
+      setError(null);
+      setSearchQuery("");
+      setSelectedMainCat(null);
+      setSelectedSubCat(null);
+      setProducts([initialProduct]);
+      setSelectedProduct(initialProduct);
+      setStoreRows([]);
+      setRelatedProducts([]);
+      setIsLoadingProducts(false);
+      return;
+    }
+
     const nextId = (initialProductId ?? routeProductId)?.trim();
     if (!nextId) return;
-    if (lastInitialProductId === nextId) return;
+    if (lastInitialProductId === `remote:${nextId}`) return;
 
+    log("load remote product", nextId);
     let cancelled = false;
-    setLastInitialProductId(nextId);
+    setLastInitialProductId(`remote:${nextId}`);
 
     const loadInitial = async () => {
       setError(null);
@@ -126,7 +153,7 @@ export function PricesScreen({ favoriteProductIds, onToggleFavorite, initialProd
     return () => {
       cancelled = true;
     };
-  }, [getProductsByIds, initialProductId, routeProductId, lastInitialProductId, t]);
+  }, [getProductsByIds, initialProduct, initialProductId, initialStoredProductId, routeProductId, lastInitialProductId, t]);
 
   const getFallbackStoreName = (storeId: string) => {
     switch (storeId) {
