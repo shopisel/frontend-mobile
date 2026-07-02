@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Image, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Camera, Flashlight, Image as ImageIcon, X } from "lucide-react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -8,10 +8,12 @@ import { useTranslation } from "react-i18next";
 import { Colors } from "../../styles/colors";
 import { Radii, Typography } from "../../styles/typography";
 import { ProductResponse, useProducts } from "../../api/useProducts";
+import { useLists, type ListResponse } from "../../api/useLists";
+import { usePrices } from "../../api/usePrices";
 import { getCategoryImage } from "../../utils/categoryImages";
 import { extractEanFromQrPayload } from "../../utils/qrCode";
 import { extractKeywordsFromOff, fetchOpenFoodFactsProduct } from "../../utils/openFoodFacts";
-import { saveScannedProduct } from "../../utils/scannedProductStore";
+import { clearScannedProduct, saveScannedProduct } from "../../utils/scannedProductStore";
 
 interface ScanScreenProps {
   onNavigate?: (route: string) => void;
@@ -67,6 +69,8 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
   const { t } = useTranslation();
   const [permission, requestPermission] = useCameraPermissions();
   const { qrCodeLookup } = useProducts();
+  const { getLists, getList, updateList } = useLists();
+  const { getPrices } = usePrices();
   const [torchOn, setTorchOn] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState(false);
@@ -76,8 +80,13 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
   const [cameraSession, setCameraSession] = useState(0);
   const isFocused = useIsFocused();
   const [cameraVisible, setCameraVisible] = useState(false);
+  const [showListPicker, setShowListPicker] = useState(false);
+  const [lists, setLists] = useState<ListResponse[]>([]);
+  const [listPickerLoading, setListPickerLoading] = useState(false);
+  const [listPickerSaving, setListPickerSaving] = useState(false);
+  const [listPickerError, setListPickerError] = useState<string | null>(null);
 
-  const canAddToList = useMemo(() => Boolean(scanResult && !scanning && !scanError), [scanResult, scanning, scanError]);
+  const canAddToList = useMemo(() => Boolean(scanResult?.product && !scanning && !scanError), [scanResult, scanning, scanError]);
   const log = (...args: unknown[]) => {
     if (__DEV__) {
       console.log("[ScanScreen]", ...args);
@@ -90,6 +99,8 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
     setAdded(false);
     setScanError(null);
     setScanResult(null);
+    setShowListPicker(false);
+    setListPickerError(null);
   }, []);
 
   useFocusEffect(
@@ -159,13 +170,21 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
     }
   };
 
-  const handleAddToList = () => {
+  const handleAddToList = async () => {
     if (!canAddToList) return;
-    setAdded(true);
-    setTimeout(() => {
-      onNavigate?.("lists");
-      resetScan();
-    }, 700);
+    setListPickerError(null);
+    setListPickerLoading(true);
+
+    try {
+      const data = await getLists();
+      setLists(Array.isArray(data) ? data : []);
+      setShowListPicker(true);
+    } catch (error) {
+      console.error("[ScanScreen] failed to load lists", error);
+      setListPickerError(typeof error === "object" && error && "message" in error ? String((error as any).message) : t("errors.requestFailed"));
+    } finally {
+      setListPickerLoading(false);
+    }
   };
 
   const goToPricesWithProduct = async (product: ProductResponse) => {
@@ -185,6 +204,65 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
     }
   };
 
+  const handleSearchByName = async () => {
+    await clearScannedProduct().catch((error) => console.error("[ScanScreen] failed to clear scanned product", error));
+    onNavigate?.("prices");
+  };
+
+  const handleRetry = () => {
+    resetScan();
+    setTorchOn(false);
+  };
+
+  const handleSelectList = async (list: ListResponse) => {
+    if (!scanResult?.product) return;
+
+    setListPickerSaving(true);
+    setListPickerError(null);
+
+    try {
+      const prices = await getPrices(scanResult.product.id).catch(() => []);
+      const bestPrice = prices.reduce((currentBest, nextPrice) => {
+        const currentValue = typeof currentBest.sale === "number" && currentBest.sale > 0 ? currentBest.sale : currentBest.price;
+        const nextValue = typeof nextPrice.sale === "number" && nextPrice.sale > 0 ? nextPrice.sale : nextPrice.price;
+        return nextValue < currentValue ? nextPrice : currentBest;
+      }, prices[0]);
+
+      if (!bestPrice) {
+        setListPickerError(t("scanScreen.noPriceToAdd"));
+        return;
+      }
+
+      const listDetails = await getList(list.id);
+      const updatedItems = [
+        ...(listDetails.items ?? []).map((item) => ({
+          productId: item.productId,
+          storeId: item.storeId,
+          quantity: item.quantity,
+          price: item.price,
+          checked: item.checked,
+        })),
+        {
+          productId: scanResult.product.id,
+          storeId: bestPrice.storeId,
+          quantity: 1,
+          price: typeof bestPrice.sale === "number" && bestPrice.sale > 0 ? bestPrice.sale : bestPrice.price,
+          checked: false,
+        },
+      ];
+
+      await updateList(list.id, listDetails.version, undefined, updatedItems);
+      setAdded(true);
+      setShowListPicker(false);
+    } catch (error) {
+      console.error("[ScanScreen] failed to add product to list", error);
+      setListPickerError(typeof error === "object" && error && "message" in error ? String((error as any).message) : t("errors.requestFailed"));
+    } finally {
+      setListPickerSaving(false);
+      setTimeout(() => setAdded(false), 1000);
+    }
+  };
+
   const openProductPage = () => {
     if (!scanResult?.product) return;
     log("open product page", scanResult.product.id);
@@ -198,7 +276,14 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
     setAdded(false);
     setScanResult(MOCK_SCAN_RESULT);
     log("load mock scan", MOCK_SCAN_RESULT.product?.id);
-    void goToPricesWithProduct(MOCK_SCAN_RESULT.product!);
+    void saveScannedProduct({
+      id: MOCK_SCAN_RESULT.product!.id,
+      name: MOCK_SCAN_RESULT.product!.name,
+      brand: MOCK_SCAN_RESULT.product!.brand ?? undefined,
+      barcode: MOCK_SCAN_RESULT.product!.barcode,
+      categoryId: MOCK_SCAN_RESULT.product!.categoryId,
+      image: MOCK_SCAN_RESULT.product!.image,
+    }).catch((error) => console.error("[ScanScreen] failed to persist scanned product", error));
   };
 
   return (
@@ -351,6 +436,19 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
                     })}
                   </ScrollView>
                 ) : null}
+
+                <View style={styles.resultActions}>
+                  <TouchableOpacity style={styles.primarySplitButton} onPress={() => void handleAddToList()} activeOpacity={0.85}>
+                    <Text style={styles.primaryButtonText}>{added ? t("scanScreen.added") : t("scanScreen.addToList")}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.secondarySplitButton}
+                    onPress={openProductPage}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.secondaryActionText}>{t("scanScreen.viewRelated")}</Text>
+                  </TouchableOpacity>
+                </View>
               </>
             ) : scanResult?.relatedProducts?.length ? (
               <ScrollView
@@ -391,26 +489,66 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
               </ScrollView>
             ) : (
               <View style={styles.errorBox}>
-                <Text style={styles.errorText}>{t("common.unknownProduct")}</Text>
+                <Text style={styles.errorText}>{t("scanScreen.noResultMessage")}</Text>
+                <View style={styles.noResultActions}>
+                  <TouchableOpacity style={styles.secondaryButtonDark} onPress={handleRetry} activeOpacity={0.85}>
+                    <Text style={styles.secondaryButtonDarkText}>{t("scanScreen.tryAgain")}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.primaryButton} onPress={() => void handleSearchByName()} activeOpacity={0.85}>
+                    <Text style={styles.primaryButtonText}>{t("scanScreen.searchByName")}</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             )}
-
-            <View style={styles.resultActions}>
-              <TouchableOpacity style={styles.primarySplitButton} onPress={handleAddToList} activeOpacity={0.85}>
-                <Text style={styles.primaryButtonText}>{added ? t("scanScreen.added") : t("scanScreen.addToList")}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.secondarySplitButton, !scanResult?.product && !scanResult?.relatedProducts?.length && styles.secondarySplitButtonDisabled]}
-                onPress={openProductPage}
-                disabled={!scanResult?.product && !scanResult?.relatedProducts?.length}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.secondaryActionText}>{t("scanScreen.viewProduct")}</Text>
-              </TouchableOpacity>
-            </View>
           </View>
         </View>
       )}
+
+      <Modal visible={showListPicker} transparent animationType="fade" onRequestClose={() => setShowListPicker(false)}>
+        <View style={styles.listPickerOverlay}>
+          <TouchableOpacity style={styles.listPickerBackdrop} activeOpacity={1} onPress={() => setShowListPicker(false)} />
+          <View style={styles.listPickerCard}>
+            <View style={styles.listPickerHeader}>
+              <Text style={styles.listPickerTitle}>{t("scanScreen.chooseList")}</Text>
+              <TouchableOpacity onPress={() => setShowListPicker(false)} activeOpacity={0.85}>
+                <X size={16} color={Colors.gray500} />
+              </TouchableOpacity>
+            </View>
+
+            {listPickerLoading ? (
+              <View style={styles.listPickerLoading}>
+                <ActivityIndicator color={Colors.primary600} />
+              </View>
+            ) : listPickerError ? (
+              <View style={styles.listPickerEmpty}>
+                <Text style={styles.listPickerEmptyText}>{listPickerError}</Text>
+              </View>
+            ) : lists.length ? (
+              <ScrollView contentContainerStyle={styles.listPickerContent} showsVerticalScrollIndicator={false}>
+                {lists.map((list) => (
+                  <TouchableOpacity
+                    key={list.id}
+                    style={styles.listPickerRow}
+                    onPress={() => void handleSelectList(list)}
+                    disabled={listPickerSaving}
+                    activeOpacity={0.85}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.listPickerRowTitle}>{list.name}</Text>
+                      <Text style={styles.listPickerRowSubtitle}>{t("lists.itemCount", { count: list.items?.length ?? 0 })}</Text>
+                    </View>
+                    <Text style={styles.listPickerRowArrow}>›</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            ) : (
+              <View style={styles.listPickerEmpty}>
+                <Text style={styles.listPickerEmptyText}>{t("scanScreen.noListsAvailable")}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -673,6 +811,22 @@ const styles = StyleSheet.create({
     color: Colors.gray700,
     textAlign: "center",
   },
+  noResultActions: {
+    gap: 10,
+    marginTop: 14,
+  },
+  secondaryButtonDark: {
+    height: 52,
+    borderRadius: Radii["2xl"],
+    backgroundColor: Colors.gray100,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  secondaryButtonDarkText: {
+    fontSize: Typography.md,
+    fontWeight: "700",
+    color: Colors.gray700,
+  },
   storeList: {
     gap: 10,
   },
@@ -773,5 +927,76 @@ const styles = StyleSheet.create({
     fontSize: Typography.md,
     fontWeight: "700",
     color: Colors.primary600,
+  },
+  listPickerOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.5)",
+    justifyContent: "flex-end",
+  },
+  listPickerBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  listPickerCard: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: Radii["3xl"],
+    borderTopRightRadius: Radii["3xl"],
+    padding: 20,
+    maxHeight: "75%",
+  },
+  listPickerHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 14,
+  },
+  listPickerTitle: {
+    fontSize: Typography.lg,
+    fontWeight: "800",
+    color: Colors.gray900,
+  },
+  listPickerLoading: {
+    minHeight: 160,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  listPickerContent: {
+    gap: 10,
+    paddingBottom: 8,
+  },
+  listPickerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderRadius: Radii["2xl"],
+    backgroundColor: Colors.gray50,
+  },
+  listPickerRowTitle: {
+    fontSize: Typography.base,
+    fontWeight: "700",
+    color: Colors.gray900,
+  },
+  listPickerRowSubtitle: {
+    marginTop: 2,
+    fontSize: Typography.sm,
+    color: Colors.gray500,
+  },
+  listPickerRowArrow: {
+    fontSize: 24,
+    lineHeight: 24,
+    color: Colors.primary600,
+    fontWeight: "700",
+  },
+  listPickerEmpty: {
+    minHeight: 120,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 10,
+  },
+  listPickerEmptyText: {
+    fontSize: Typography.base,
+    color: Colors.gray500,
+    textAlign: "center",
   },
 });
