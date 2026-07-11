@@ -1,6 +1,6 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Image, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { Camera, Flashlight, Image as ImageIcon, X } from "lucide-react-native";
+import { Camera as CameraIcon, Flashlight, Image as ImageIcon, X } from "lucide-react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useIsFocused } from "@react-navigation/native";
@@ -26,29 +26,6 @@ type ScanResult = {
   relatedProducts: ProductResponse[];
 };
 
-const MOCK_SCAN_RESULT: ScanResult = {
-  barcode: "5601234567890",
-  matchType: "exact",
-  product: {
-    id: "0167284433664441b4de2500e5303385",
-    name: "Preparado Sopa Juliana Embalado",
-    brand: "Pingo Doce",
-    barcode: "5601234567890",
-    categoryId: "mock-category",
-    image: "https://www.pingodoce.pt/dw/image/v2/BLJJ_PRD/on/demandware.static/-/Sites-pingo-doce-master/default/dwd2cd5256/images/medium/955143_aba9f0d892659ee05105ab26638a5939.png?sw=198",
-  },
-  relatedProducts: [
-    {
-      id: "mock-product-2",
-      name: "Produto semelhante",
-      brand: "Shopisel",
-      barcode: "5601234567891",
-      categoryId: "mock-category",
-      image: "",
-    },
-  ],
-};
-
 const getProductImageSource = (product?: ProductResponse | null) => {
   if (!product) return null;
   return getCategoryImage(product.image, product.categoryId ?? product.name);
@@ -67,7 +44,7 @@ const getBadge = (value?: string) => {
 export function ScanScreen({ onNavigate }: ScanScreenProps) {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
-  const [permission, requestPermission] = useCameraPermissions();
+  const [permission, requestPermission, getPermission] = useCameraPermissions();
   const { qrCodeLookup } = useProducts();
   const { getLists, getList, updateList } = useLists();
   const { getPrices } = usePrices();
@@ -85,6 +62,10 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
   const [listPickerLoading, setListPickerLoading] = useState(false);
   const [listPickerSaving, setListPickerSaving] = useState(false);
   const [listPickerError, setListPickerError] = useState<string | null>(null);
+  const scanLockRef = useRef(false);
+  const cameraRestartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scanResumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastScanAtRef = useRef(0);
 
   const canAddToList = useMemo(() => Boolean(scanResult?.product && !scanning && !scanError), [scanResult, scanning, scanError]);
   const log = (...args: unknown[]) => {
@@ -94,6 +75,7 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
   };
 
   const resetScan = useCallback(() => {
+    scanLockRef.current = false;
     setScanning(false);
     setScanned(false);
     setAdded(false);
@@ -103,23 +85,52 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
     setListPickerError(null);
   }, []);
 
+  const restartCameraPreview = useCallback(() => {
+    if (cameraRestartTimerRef.current) {
+      clearTimeout(cameraRestartTimerRef.current);
+      cameraRestartTimerRef.current = null;
+    }
+
+    setCameraVisible(false);
+    setCameraSession((value) => value + 1);
+    cameraRestartTimerRef.current = setTimeout(() => {
+      setCameraVisible(true);
+      cameraRestartTimerRef.current = null;
+    }, 180);
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
-      setCameraSession((value) => value + 1);
-      const timer = setTimeout(() => {
-        setCameraVisible(true);
-      }, 180);
-
+      resetScan();
+      void getPermission();
+      restartCameraPreview();
       return () => {
-        clearTimeout(timer);
+        if (cameraRestartTimerRef.current) {
+          clearTimeout(cameraRestartTimerRef.current);
+          cameraRestartTimerRef.current = null;
+        }
+        if (scanResumeTimerRef.current) {
+          clearTimeout(scanResumeTimerRef.current);
+          scanResumeTimerRef.current = null;
+        }
         setCameraVisible(false);
         resetScan();
         setTorchOn(false);
       };
-    }, [resetScan]),
+    }, [getPermission, resetScan, restartCameraPreview]),
   );
 
   const handleScannedPayload = async (payload: string) => {
+    if (scanLockRef.current || scanning || scanned) {
+      return;
+    }
+
+    if (Date.now() - lastScanAtRef.current < 1200) {
+      return;
+    }
+
+    scanLockRef.current = true;
+    lastScanAtRef.current = Date.now();
     setScanError(null);
     setScanResult(null);
     setScanning(true);
@@ -131,6 +142,10 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
 
       const off = await fetchOpenFoodFactsProduct(barcode);
       const keywords = extractKeywordsFromOff(off);
+      log("scan keywords", {
+        barcode,
+        keywords,
+      });
       const backendRes = await qrCodeLookup(barcode, keywords);
       log("scan result", {
         barcode,
@@ -167,6 +182,7 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
       setScanError(typeof err === "object" && err && "message" in err ? String((err as any).message) : t("errors.requestFailed"));
     } finally {
       setScanning(false);
+      scanLockRef.current = false;
     }
   };
 
@@ -212,6 +228,25 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
   const handleRetry = () => {
     resetScan();
     setTorchOn(false);
+    if (scanResumeTimerRef.current) {
+      clearTimeout(scanResumeTimerRef.current);
+    }
+    scanResumeTimerRef.current = setTimeout(() => {
+      lastScanAtRef.current = 0;
+      restartCameraPreview();
+      scanResumeTimerRef.current = null;
+    }, 1200);
+  };
+
+  const handleRequestPermission = async () => {
+    try {
+      const updatedPermission = await requestPermission();
+      if (updatedPermission.granted) {
+        restartCameraPreview();
+      }
+    } catch {
+      // Let the permission card remain visible if the system dialog is dismissed.
+    }
   };
 
   const handleSelectList = async (list: ListResponse) => {
@@ -269,23 +304,6 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
     void goToPricesWithProduct(scanResult.product);
   };
 
-  const loadMockScan = () => {
-    setScanError(null);
-    setScanning(false);
-    setScanned(true);
-    setAdded(false);
-    setScanResult(MOCK_SCAN_RESULT);
-    log("load mock scan", MOCK_SCAN_RESULT.product?.id);
-    void saveScannedProduct({
-      id: MOCK_SCAN_RESULT.product!.id,
-      name: MOCK_SCAN_RESULT.product!.name,
-      brand: MOCK_SCAN_RESULT.product!.brand ?? undefined,
-      barcode: MOCK_SCAN_RESULT.product!.barcode,
-      categoryId: MOCK_SCAN_RESULT.product!.categoryId,
-      image: MOCK_SCAN_RESULT.product!.image,
-    }).catch((error) => console.error("[ScanScreen] failed to persist scanned product", error));
-  };
-
   return (
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
@@ -315,7 +333,7 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
                   style={styles.cameraView}
                   facing="back"
                   enableTorch={torchOn}
-                  onBarcodeScanned={scanned ? undefined : (event) => void handleScannedPayload(event.data)}
+                  onBarcodeScanned={scanned || scanning ? undefined : (event) => void handleScannedPayload(event.data)}
                 />
                 <View style={[styles.corner, styles.topLeft]} />
                 <View style={[styles.corner, styles.topRight]} />
@@ -329,8 +347,8 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
               <View style={styles.cameraPermissionCard}>
                 <Text style={styles.permissionTitle}>{t("prices.cameraPermissionTitle")}</Text>
                 <Text style={styles.permissionText}>{t("prices.cameraPermissionBody")}</Text>
-                <TouchableOpacity style={styles.primaryButton} onPress={() => void requestPermission()} activeOpacity={0.85}>
-                  <Camera size={18} color={Colors.surface} />
+                <TouchableOpacity style={styles.primaryButton} onPress={() => void handleRequestPermission()} activeOpacity={0.85}>
+                  <CameraIcon size={18} color={Colors.surface} />
                   <Text style={styles.primaryButtonText}>{t("prices.grantCameraPermission")}</Text>
                 </TouchableOpacity>
               </View>
@@ -340,23 +358,17 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
           <View style={styles.actions}>
             <TouchableOpacity
               style={[styles.primaryButton, scanning && styles.primaryButtonDisabled]}
-              onPress={() => !scanning && setScanning(true)}
+              onPress={handleRetry}
               activeOpacity={0.85}
             >
-              <Camera size={18} color={Colors.surface} />
-              <Text style={styles.primaryButtonText}>{scanning ? t("addProduct.scanning") : t("scanScreen.scanBarcode")}</Text>
+              <CameraIcon size={18} color={Colors.surface} />
+              <Text style={styles.primaryButtonText}>{t("scanScreen.tryAgain")}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.secondaryButton} activeOpacity={0.85}>
               <ImageIcon size={18} color={Colors.gray600} />
               <Text style={styles.secondaryButtonText}>{t("scanScreen.chooseGallery")}</Text>
             </TouchableOpacity>
-
-            {__DEV__ ? (
-              <TouchableOpacity style={styles.secondaryButton} onPress={loadMockScan} activeOpacity={0.85}>
-                <Text style={styles.secondaryButtonText}>{t("scanScreen.loadExample")}</Text>
-              </TouchableOpacity>
-            ) : null}
           </View>
         </>
       ) : (
@@ -376,7 +388,7 @@ export function ScanScreen({ onNavigate }: ScanScreenProps) {
                   {scanResult?.product?.name ?? t("common.unknownProduct")}
                 </Text>
               </View>
-              <TouchableOpacity style={styles.closeButton} onPress={resetScan}>
+              <TouchableOpacity style={styles.closeButton} onPress={handleRetry}>
                 <X size={16} color={Colors.gray500} />
               </TouchableOpacity>
             </View>

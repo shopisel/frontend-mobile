@@ -13,6 +13,43 @@ export interface OpenFoodFactsResponse {
   };
 }
 
+const STOPWORDS = new Set([
+  "a",
+  "o",
+  "as",
+  "os",
+  "um",
+  "uma",
+  "uns",
+  "umas",
+  "de",
+  "da",
+  "do",
+  "das",
+  "dos",
+  "e",
+  "em",
+  "no",
+  "na",
+  "nos",
+  "nas",
+  "para",
+  "por",
+  "com",
+  "sem",
+  "ao",
+  "aos",
+  "and",
+  "of",
+  "the",
+  "to",
+  "for",
+  "from",
+  "in",
+  "on",
+  "with",
+]);
+
 export const fetchOpenFoodFactsProduct = async (ean: string, timeoutMs = 8000): Promise<OpenFoodFactsResponse> => {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -33,41 +70,65 @@ const splitTags = (value: string): string[] =>
     .map((chunk) => chunk.trim())
     .filter(Boolean);
 
-const cleanTag = (raw: string): string => raw.replace(/^[a-z]{2}:/i, "").trim();
+const splitWords = (value: string): string[] =>
+  value
+    .replace(/^[a-z]{2}:/i, "")
+    .replace(/[_-]+/g, " ")
+    .split(/[\s/().,;:+{}\[\]]+/g)
+    .map((chunk) => chunk.trim())
+    .filter(Boolean);
+
+const normalizeToken = (raw: string): string =>
+  raw
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/^[a-z]{2}:/i, "")
+    .replace(/[_-]+/g, " ")
+    .trim();
+
+const isUsefulToken = (token: string): boolean =>
+  Boolean(token) &&
+  token.length >= 2 &&
+  !STOPWORDS.has(token) &&
+  !/^e\d+[a-z]?$/i.test(token) &&
+  !/^\d+$/.test(token);
 
 export const extractKeywordsFromOff = (off: OpenFoodFactsResponse): string[] => {
   const product = off.product ?? {};
   const collected: string[] = [];
 
-  const maybeAddMany = (values: unknown) => {
+  const maybeAddMany = (values: unknown, splitIntoWords = false) => {
     if (!values) return;
     if (Array.isArray(values)) {
-      collected.push(...values.map((v) => String(v)));
+      for (const value of values) {
+        const text = String(value);
+        collected.push(...(splitIntoWords ? splitWords(text) : splitTags(text)));
+      }
       return;
     }
     if (typeof values === "string") {
-      collected.push(...splitTags(values));
+      collected.push(...(splitIntoWords ? splitWords(values) : splitTags(values)));
     }
   };
 
+  // Put the strongest signals first so the backend sees them early.
+  maybeAddMany(product.product_name_pt, true);
+  maybeAddMany(product.product_name, true);
+  maybeAddMany(product.brands, true);
+
+  // Secondary signals from Open Food Facts metadata.
   maybeAddMany(product._keywords);
   maybeAddMany(product.keywords);
-  maybeAddMany(product.categories_tags);
-  maybeAddMany(product.labels_tags);
-  maybeAddMany(product.ingredients_tags);
-
-  // Keep as a last-resort fallback: a few tokens from name/brands.
-  if (!collected.length) {
-    if (product.product_name_pt) collected.push(...splitTags(product.product_name_pt));
-    if (product.product_name) collected.push(...splitTags(product.product_name));
-    if (product.brands) collected.push(...splitTags(product.brands));
-  }
+  maybeAddMany(product.categories_tags, true);
+  maybeAddMany(product.labels_tags, true);
+  maybeAddMany(product.ingredients_tags, true);
 
   const normalized = collected
-    .map((v) => cleanTag(String(v).toLowerCase()))
-    .map((v) => v.replace(/[_-]+/g, " ").trim())
-    .filter(Boolean);
+    .flatMap((value) => splitWords(value))
+    .map(normalizeToken)
+    .filter(isUsefulToken);
 
-  return Array.from(new Set(normalized)).slice(0, 40);
+  return Array.from(new Set(normalized)).slice(0, 30);
 };
-
